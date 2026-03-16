@@ -25,3 +25,7 @@ python-docx
 PyPDF2
 aiofiles
 sse-starlette
+
+# 火山引擎（豆包）SDK
+volcengine
+
