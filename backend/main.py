@@ -2,20 +2,23 @@ import os
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from backend.utils.config import settings
-from backend.utils.logger import logger
-from backend.database.db import init_db
-from backend.api import api_router
+from utils.config import settings
+from utils.logger import logger
+from database.db import init_db
+from api import api_router
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info(f"Starting {settings.app_name} v{settings.app_version}...")
 
-    os.makedirs(settings.log_dir, exist_ok=True)
-    os.makedirs(settings.upload_dir, exist_ok=True)
-    os.makedirs(settings.chroma_persist_dir, exist_ok=True)
-    os.makedirs(settings.kg_persist_dir, exist_ok=True)
+    # 获取项目根目录
+    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    
+    os.makedirs(os.path.join(project_root, settings.log_dir), exist_ok=True)
+    os.makedirs(os.path.join(project_root, settings.upload_dir), exist_ok=True)
+    os.makedirs(os.path.join(project_root, settings.chroma_persist_dir), exist_ok=True)
+    os.makedirs(os.path.join(project_root, settings.kg_persist_dir), exist_ok=True)
 
     await init_db()
 

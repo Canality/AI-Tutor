@@ -3,7 +3,21 @@ from typing import List
 from pydantic_settings import BaseSettings
 from dotenv import load_dotenv
 
-load_dotenv()
+# 确保能找到 .env 文件
+# 尝试从多个位置加载
+env_paths = [
+    os.path.join(os.path.dirname(__file__), "..", ".env"),  # backend/.env
+    os.path.join(os.path.dirname(__file__), "..", "..", ".env"),  # .env
+    ".env"  # 当前目录
+]
+
+for env_path in env_paths:
+    if os.path.exists(env_path):
+        load_dotenv(env_path)
+        break
+else:
+    # 如果都没找到，尝试加载默认配置
+    load_dotenv()
 
 
 class Settings(BaseSettings):
@@ -17,7 +31,7 @@ class Settings(BaseSettings):
     mysql_host: str = os.getenv("MYSQL_HOST", "localhost")
     mysql_port: int = int(os.getenv("MYSQL_PORT", "3306"))
     mysql_user: str = os.getenv("MYSQL_USER", "root")
-    mysql_password: str = os.getenv("MYSQL_PASSWORD", "")
+    mysql_password: str = os.getenv("MYSQL_PASSWORD", "root")
     mysql_database: str = os.getenv("MYSQL_DATABASE", "ai_tutor")
 
     @property
@@ -35,7 +49,7 @@ class Settings(BaseSettings):
             return f"redis://:{self.redis_password}@{self.redis_host}:{self.redis_port}/{self.redis_db}"
         return f"redis://{self.redis_host}:{self.redis_port}/{self.redis_db}"
 
-    secret_key: str = os.getenv("SECRET_KEY", "your-secret-key-change-this-in-production")
+    secret_key: str = os.getenv("SECRET_KEY", "1f2f5999e2c3f1bd4d7a05c0261a44df2ac407484056b9703fadbba03091de0f")
     algorithm: str = os.getenv("ALGORITHM", "HS256")
     access_token_expire_minutes: int = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "30"))
 

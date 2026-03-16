@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from backend.api import auth, chat, exercises, profile, upload
+from api import auth, chat, exercises, profile, upload
 
 api_router = APIRouter(prefix="/api")
 
