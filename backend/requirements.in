@@ -1,0 +1,31 @@
+# AI Tutor Backend
+fastapi
+uvicorn[standard]
+sqlalchemy
+aiomysql
+cryptography
+pymysql
+redis
+aioredis
+pydantic
+pydantic-settings
+python-jose[cryptography]
+passlib[bcrypt]
+python-multipart
+langchain
+langchain-openai
+chromadb
+sentence-transformers
+networkx
+python-dotenv
+pandas
+numpy
+pillow
+python-docx
+PyPDF2
+aiofiles
+sse-starlette
+
+# 火山引擎（豆包）SDK
+volcengine
+
