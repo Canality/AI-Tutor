@@ -1,5 +1,7 @@
 import os
 from typing import List
+
+from pydantic import Field
 from pydantic_settings import BaseSettings
 from dotenv import load_dotenv
 
@@ -18,6 +20,17 @@ for env_path in env_paths:
 else:
     # 如果都没找到，尝试加载默认配置
     load_dotenv()
+
+
+BACKEND_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+PROJECT_ROOT = os.path.abspath(os.path.join(BACKEND_DIR, ".."))
+
+
+def _resolve_project_path(path: str) -> str:
+    if os.path.isabs(path):
+        return path
+    cleaned = path[2:] if path.startswith("./") else path
+    return os.path.abspath(os.path.join(PROJECT_ROOT, cleaned))
 
 
 class Settings(BaseSettings):
@@ -63,6 +76,8 @@ class Settings(BaseSettings):
     volc_region: str = os.getenv("VOLC_REGION", "cn-beijing")
     volc_endpoint: str = os.getenv("VOLC_ENDPOINT", "ark.cn-beijing.volces.com")
     volc_model: str = os.getenv("VOLC_MODEL", "")
+    volc_vision_model: str = os.getenv("VOLC_VISION_MODEL", "")
+    volc_embedding_model: str = os.getenv("VOLC_EMBEDDING_MODEL", "")
 
     chroma_persist_dir: str = os.getenv("CHROMA_PERSIST_DIR", "./storage/chroma")
     chroma_collection_name: str = os.getenv("CHROMA_COLLECTION_NAME", "sequence_questions")
@@ -78,5 +93,12 @@ class Settings(BaseSettings):
     log_level: str = os.getenv("LOG_LEVEL", "INFO")
     log_dir: str = os.getenv("LOG_DIR", "./logs")
 
+    verbose: bool = Field(default=False, env="VERBOSE")
+
 
 settings = Settings()
+
+settings.chroma_persist_dir = _resolve_project_path(settings.chroma_persist_dir)
+settings.kg_persist_dir = _resolve_project_path(settings.kg_persist_dir)
+settings.upload_dir = _resolve_project_path(settings.upload_dir)
+settings.log_dir = _resolve_project_path(settings.log_dir)

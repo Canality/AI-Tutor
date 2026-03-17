@@ -40,6 +40,10 @@ async def init_db():
     from backend.models.question import Question
     from backend.models.record import LearningRecord
     from backend.models.profile import UserProfile
+    from backend.models.chat import (
+        ChatSession, ChatMessage, SolutionStep,
+        KnowledgePoint, QuestionKnowledgePoint, UserKnowledgeMastery
+    )
 
     async with async_engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
