@@ -21,7 +21,8 @@ def search_knowledge(query: str, top_k: int = 3) -> List[Dict[str, Any]]:
         return results
     except Exception as e:
         logger.error(f"Search knowledge failed: {e}")
-        raise []
+        return []
+
 
 
 @tool

@@ -14,7 +14,9 @@ INSTRUCTOR_PROMPT = ChatPromptTemplate.from_messages([
 - 你的讲解应该适合高中学生理解
 - 不要直接给出答案，而是引导学生思考
 - 标注出涉及的知识点
-- 如果需要，可以给出相关的公式和定理"""),
+- 如果需要，可以给出相关的公式和定理
+- 工具调用要克制：同一问题中每个工具最多调用 1-2 次；如果已有足够信息，直接完成最终解答
+- 必须输出“最终解答”段落，不能只输出中间思路"""),
     MessagesPlaceholder(variable_name="chat_history"),
     ("human", "{input}"),
     MessagesPlaceholder(variable_name="agent_scratchpad"),
@@ -22,6 +24,9 @@ INSTRUCTOR_PROMPT = ChatPromptTemplate.from_messages([
 
 VISION_ANALYSIS_PROMPT = PromptTemplate.from_template(
     """请分析这张图片中的数学数列题目。
+图片的 Base64 编码数据如下：
+{image_data}
+
 如果图片中有题目内容，请提取题目文本。
 如果图片中有解题过程，请分析解题思路。
 
