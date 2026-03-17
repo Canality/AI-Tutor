@@ -64,13 +64,15 @@ ai_tutor_project/
 │   │   ├── chat.py                 # Tutor对话接口
 │   │   ├── profile.py              # 学生画像接口
 │   │   ├── exercises.py            # 练习题推荐接口
-│   │   │
+│   │   ├── init.py
 │   │   ├── auth.py                 # 登录注册接口（新增）
 │   │   └── upload.py               # 图片/文件上传接口（新增）
 │
 │
-│   ├── agent/                      # 多Agent系统
-│   │
+│   ├── agent/   # 多Agent系统
+│   │  
+│   │   ├── tools.py
+│   │   ├── prompt.py
 │   │   ├── instructor.py           # 解题Agent
 │   │   ├── advisor.py              # 学习规划Agent
 │   │   └── planner.py              # Agent调度器（可选增强）
@@ -87,7 +89,7 @@ ai_tutor_project/
 │   │
 │   │   ├── vector_db.py            # 向量数据库
 │   │   ├── retriever.py            # 检索逻辑
-│   │   └── embedding.py            # 文本向量化
+│   │   └── add_mock_data.py         
 │
 │
 │   ├── kg/                         # 知识图谱模块
