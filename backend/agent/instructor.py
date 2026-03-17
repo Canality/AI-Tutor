@@ -22,11 +22,13 @@ class InstructorAgent:
             agent=self.agent,
             tools=self.tools,
             verbose=settings.verbose,
-            handle_parsing_erros=True,
-            max_iterations=5,
-            max_execution_time=30,
+            handle_parsing_errors=True,
+            max_iterations=12,
+            max_execution_time=90,
+            early_stopping_method="generate",
             return_intermediate_steps=False
         )
+
 
     def _init_llm(self):
         if settings.volc_access_key and settings.volc_model:
@@ -109,7 +111,8 @@ class InstructorAgent:
                         yield content
                 elif kind == "on_tool_start":
                     tool_name = event["name"]
-                    yield f"\n using tools：{tool_name}\n"
+                    yield f"\n[useing tools] {tool_name}\n"
+
 
             logger.info("finished")
         except Exception as e:
