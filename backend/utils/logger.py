@@ -1,7 +1,7 @@
 import logging
 import os
 from datetime import datetime
-from backend.utils.config import settings
+from utils.config import settings
 
 
 def setup_logger(name: str = "ai_tutor") -> logging.Logger:

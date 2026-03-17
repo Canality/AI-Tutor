@@ -18,7 +18,7 @@ def check_env_file():
     
     # 检查 backend 目录下的 .env 文件
     env_file = os.path.join(project_root, "backend", ".env")
-    env_example = os.path.join(project_root, ".env.example")
+    env_example = os.path.join(project_root, ".env")
     
     if not os.path.exists(env_file):
         logger.warning(f"未找到 {env_file} 文件，将使用默认配置")
