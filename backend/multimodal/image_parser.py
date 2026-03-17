@@ -52,7 +52,7 @@ class ImageParser:
                 return None
 
             if response:
-                logger.info("图片解析成功")
+                logger.info("Successfully parsed image")
                 return {
                     "success": True,
                     "question_text": response,

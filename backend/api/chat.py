@@ -10,7 +10,7 @@ from utils.logger import logger
 router = APIRouter(prefix="/chat")
 
 async def save_uploaded_file(upload_file: UploadFile) -> str:
-    """保存上传的文件。"""
+    """save uploaded file to local storage and return the file path"""
     os.makedirs(settings.upload_dir, exist_ok=True)
     
     file_extension = os.path.splitext(upload_file.filename)[1]
@@ -21,7 +21,7 @@ async def save_uploaded_file(upload_file: UploadFile) -> str:
         content = await upload_file.read()
         buffer.write(content)
     
-    logger.info(f"文件已保存: {file_path}")
+    logger.info(f"file saved: {file_path}")
     return file_path
 
 @router.post("/ask-stream")
@@ -36,16 +36,6 @@ async def ask_stream(
             image_path = await save_uploaded_file(image)
         
         async def generate():
-            """异步生成器函数，用于流式处理问题并返回结果。
-            
-            该函数使用 tutor_service.process_question_stream 处理用户问题和可选的图片，
-            并通过 yield 语句逐个返回处理结果的 chunks，实现流式响应。
-            
-            注意：该函数使用了外部作用域的 question 和 image_path 变量。
-            
-            Yields:
-                str: 处理结果的文本块，用于流式响应
-            """
             async for chunk in tutor_service.process_question_stream(question, image_path):
                 yield chunk
             
@@ -59,5 +49,5 @@ async def ask_stream(
             }
         )
     except Exception as e:
-        logger.error(f"处理请求时发生错误: {e}")
-        raise HTTPException(status_code=500, detail="处理请求时发生错误")
+        logger.error(f"Tutor service error: {e}")
+        raise HTTPException(status_code=500, detail="Tutor service error")
