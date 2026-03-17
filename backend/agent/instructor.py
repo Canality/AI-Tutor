@@ -93,7 +93,7 @@ class InstructorAgent:
 
         try:
             chat_history = chat_history or []
-            logger.info(f"Instructor Agent 开始流式解题: {question[:100]}...")
+            logger.info(f"Instructor Agent starts to solve: {question[:100]}...")
 
             async for event in self.agent_executor.astream_events(
                 {

@@ -29,8 +29,8 @@ class TutorService:
                 if parse_result and parse_result.get("has_question"):
                     parsed_question = parse_result.get("question_text", "")
                     if parsed_question:
-                        question_text = f"{text_content}\n\n图片中的题目内容：{parsed_question}"
-                        logger.info("图片解析完成，合并文字内容")
+                        question_text = f"{text_content}\n\ncontent of the question：{parsed_question}"
+                        logger.info("finished parsing image, start to solve question")
 
             logger.info(f"Tutor service started for {question_text[0:200]}")
             result = await instructor_agent.solve(question_text, chat_history)
@@ -40,7 +40,7 @@ class TutorService:
             return {
                 "success": False,
                 "error": str(e),
-                "answer": "抱歉，处理过程中出现了错误，请稍后重试。",
+                "answer": "Something went wrong, I'm sorry.",
                 "chat_history": chat_history
             }
 
@@ -48,7 +48,7 @@ class TutorService:
         self,
         text_content: str,
         image_path: Optional[str] = None,
-        chat_history: Optional[List[BaseMessage]] = None  # 【修复】新增聊天历史入参
+        chat_history: Optional[List[BaseMessage]] = None 
     ) -> AsyncGenerator[str, None]:
         try:
             logger.info(f"Tutor service started for {text_content}")
@@ -61,8 +61,8 @@ class TutorService:
                 if parse_result and parse_result.get("has_question"):
                     parsed_question = parse_result.get("question_text", "")
                     if parsed_question:
-                        question_text = f"{text_content}\n\n图片中的题目内容：{parsed_question}"
-                        yield "正在分析图片中的题目...\n\n"
+                        question_text = f"{text_content}\n\ncontent of the question：{parsed_question}"
+                        yield "I've parsed the question, now I'm going to solve it.\n\n"
 
             async for chunk in instructor_agent.solve_stream(question_text, chat_history):
                 yield chunk
