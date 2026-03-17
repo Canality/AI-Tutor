@@ -22,8 +22,9 @@ class ImageParser:
 
             with open(image_path, "rb") as f:
                 image_data = base64.b64encode(f.read()).decode()
+                logger.info(f"Image base64 encoded{image_data}")
 
-            prompt = VISION_ANALYSIS_PROMPT.format(image_data)
+            prompt = VISION_ANALYSIS_PROMPT.format_prompt(image_data=image_data).to_string()
 
             messages = [
                 {

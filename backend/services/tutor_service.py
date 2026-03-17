@@ -62,7 +62,8 @@ class TutorService:
                     parsed_question = parse_result.get("question_text", "")
                     if parsed_question:
                         question_text = f"{text_content}\n\ncontent of the question：{parsed_question}"
-                        yield "I've parsed the question, now I'm going to solve it.\n\n"
+                        yield "finished parsing,start to solve...\n\n"
+
 
             async for chunk in instructor_agent.solve_stream(question_text, chat_history):
                 yield chunk

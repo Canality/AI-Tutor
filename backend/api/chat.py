@@ -37,11 +37,11 @@ async def ask_stream(
         
         async def generate():
             async for chunk in tutor_service.process_question_stream(question, image_path):
-                yield chunk
+                yield f"data: {chunk}\n\n"
             
         return StreamingResponse(
             generate(),
-            media_type="text/plain",
+            media_type="text/event-stream",
             headers={
                 "Cache-Control": "no-cache",
                 "Connection": "keep-alive",
