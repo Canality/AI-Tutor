@@ -7,7 +7,6 @@ from pydantic import BaseModel, ConfigDict, Field
 class RegisterRequest(BaseModel):
     username: str = Field(..., min_length=3, max_length=50)
     password: str = Field(..., min_length=6, max_length=128)
-    email: Optional[str] = Field(default=None, max_length=100)
 
 
 class LoginRequest(BaseModel):
@@ -20,7 +19,6 @@ class UserResponse(BaseModel):
 
     id: int
     username: str
-    email: Optional[str]
     created_at: Optional[datetime]
 
 
