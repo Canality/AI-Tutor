@@ -36,11 +36,11 @@ async def get_db():
 
 
 async def init_db():
-    from backend.models.user import User
-    from backend.models.question import Question
-    from backend.models.record import LearningRecord
-    from backend.models.profile import UserProfile
-    from backend.models.chat import (
+    from models.user import User
+    from models.question import Question
+    from models.record import LearningRecord
+    from models.profile import UserProfile
+    from models.chat import (
         ChatSession, ChatMessage, SolutionStep,
         KnowledgePoint, QuestionKnowledgePoint, UserKnowledgeMastery
     )
