@@ -1,9 +1,9 @@
 import json
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from backend.models.user import UserProfile
-from backend.models.question import Question
-from backend.models.record import LearningRecord
+from models.user import UserProfile
+from models.question import Question
+from models.record import LearningRecord
 
 
 async def recommend_exercises(db: AsyncSession, user_id: int, limit: int = 5):
