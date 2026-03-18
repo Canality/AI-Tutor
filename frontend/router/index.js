@@ -12,12 +12,12 @@ const router = createRouter({
     {
       path: '/register',
       name: 'register',
-      component: () => import('../views/RegisterView.vue')
+      component: () => import('../pages/RegisterView.vue')
     },
     {
       path: '/ai-tutor',
       name: 'ai-tutor',
-      component: () => import('../views/AiTutorView.vue')
+      component: () => import('../pages/AiTutorView.vue')
     }
   ]
 })
