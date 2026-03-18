@@ -1,7 +1,7 @@
 import json
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from models.user import UserProfile
+from models.profile import UserProfile
 from models.question import Question
 from models.record import LearningRecord
 

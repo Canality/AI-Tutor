@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Text, DateTime, JSON, Float
+from sqlalchemy import Column, Integer, String, Text, DateTime, JSON, Float, ForeignKey
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 from database.db import Base
@@ -8,6 +8,8 @@ class Question(Base):
     __tablename__ = "questions"
 
     id = Column(Integer, primary_key=True, autoincrement=True, index=True)
+
+    user_id = Column(Integer, ForeignKey("users.id"), unique=True, nullable=False, index=True)
 
     # 1. 题目内容
     content = Column(Text, nullable=False, comment="题目题干内容")
