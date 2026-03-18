@@ -1,8 +1,8 @@
 import json
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from backend.models.user import UserProfile
-from backend.models.question import Question
+from models.user import UserProfile
+from models.question import Question
 
 
 async def get_user_profile(db: AsyncSession, user_id: int):

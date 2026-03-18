@@ -1,6 +1,6 @@
 import asyncio
-from backend.database.db import init_db
-from backend.utils.logger import logger
+from database.db import init_db
+from utils.logger import logger
 
 
 async def main():

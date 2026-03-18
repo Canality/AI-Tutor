@@ -1,7 +1,7 @@
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from backend.models.record import LearningRecord
-from backend.models.question import Question
+from models.record import LearningRecord
+from models.question import Question
 import json
 
 

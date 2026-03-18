@@ -1,7 +1,7 @@
-from sqlalchemy import Column, Integer, Text, Boolean, DateTime, ForeignKey
+from sqlalchemy import Column, Integer, Text, Boolean, DateTime, ForeignKey, String, JSON
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
-from backend.database.db import Base
+from database.db import Base
 
 
 class LearningRecord(Base):
