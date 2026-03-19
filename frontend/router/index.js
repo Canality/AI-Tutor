@@ -20,14 +20,9 @@ const router = createRouter({
       component: () => import('../pages/AiTutorView.vue')
     },
     {
-      path: '/profile',
-      name: 'profile',
-      component: () => import('../pages/ProfileView.vue')
-    },
-    {
-      path: '/exercises',
-      name: 'exercises',
-      component: () => import('../pages/ExercisesView.vue')
+      path: '/recommend',
+      name: 'recommend',
+      component: () => import('../pages/RecommendView.vue')
     }
   ]
 })
