@@ -78,71 +78,71 @@ export const chatAPI = {
     const url = `${API_BASE_URL}/api/chat/ask-stream`;
     const token = localStorage.getItem('token');
     
-    if (imageFile) {
-      // 当有图片时，使用 FormData 发送请求
+    // HTML实体解码函数
+    const decodeHtmlEntities = (text) => {
+      const txt = document.createElement('textarea');
+      txt.innerHTML = text;
+      return txt.value;
+    };
+    
+    try {
       const formData = new FormData();
       formData.append('question', message);
-      formData.append('image', imageFile);
+      if (imageFile) {
+        formData.append('image', imageFile);
+      }
       
-      try {
-        const response = await fetch(url, {
-          method: 'POST',
-          headers: {
-            ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
-          },
-          body: formData,
-        });
-        
-        if (!response.ok) {
-          throw new Error('请求失败');
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+        },
+        body: formData,
+      });
+      
+      if (!response.ok) {
+        throw new Error('请求失败');
+      }
+      
+      const reader = response.body.getReader();
+      let accumulatedData = '';
+      let lastUpdateTime = Date.now();
+      const updateInterval = 100; // 每100ms更新一次
+      
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) {
+          // 处理最后一批数据
+          if (accumulatedData) {
+            const decodedData = decodeHtmlEntities(accumulatedData);
+            onMessage(decodedData);
+          }
+          break;
         }
         
-        const reader = response.body.getReader();
-        let result = '';
+        const chunk = new TextDecoder('utf-8').decode(value);
+        const lines = chunk.split('\n');
         
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          
-          const chunk = new TextDecoder('utf-8').decode(value);
-          const lines = chunk.split('\n');
-          
-          for (const line of lines) {
-            if (line.startsWith('data: ')) {
-              const data = line.substring(6);
-              if (data) {
-                try {
-                  onMessage(data);
-                } catch (error) {
-                  console.error('解析 SSE 消息失败:', error);
-                }
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const data = line.substring(6);
+            if (data) {
+              accumulatedData += data;
+              
+              // 定期更新，避免过于频繁的渲染
+              const currentTime = Date.now();
+              if (currentTime - lastUpdateTime >= updateInterval) {
+                const decodedData = decodeHtmlEntities(accumulatedData);
+                onMessage(decodedData);
+                lastUpdateTime = currentTime;
               }
             }
           }
         }
-      } catch (error) {
-        console.error('SSE 请求错误:', error);
-        onError(error);
       }
-    } else {
-      // 当没有图片时，使用 EventSource
-      const eventSource = new EventSource(`${url}?question=${encodeURIComponent(message)}${token ? `&token=${token}` : ''}`);
-      
-      eventSource.onmessage = (event) => {
-        try {
-          onMessage(event.data);
-        } catch (error) {
-          console.error('解析 SSE 消息失败:', error);
-        }
-      };
-      
-      eventSource.onerror = (error) => {
-        console.error('SSE 连接错误:', error);
-        onError(error);
-        eventSource.close();
-      };
-      
-      return eventSource;
+    } catch (error) {
+      console.error('SSE 请求错误:', error);
+      onError(error);
     }
   },
 };

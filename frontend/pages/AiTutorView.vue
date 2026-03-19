@@ -49,8 +49,6 @@ import { ref, onMounted, computed } from 'vue'
 import QuestionInput from '../components/QuestionInput.vue'
 import Navigation from '../components/Navigation.vue'
 import { chatAPI } from '../services/apiService'
-import katex from 'katex'
-import 'katex/dist/katex.min.css'
 
 const messages = ref([
   { type: 'user', content: 'Hello, AI Tutor!' },
@@ -62,84 +60,17 @@ const questionInput = ref(null)
 const currentAiResponse = ref('')
 const isStreaming = ref(false)
 
-// 计算属性，用于渲染数学公式和格式化内容
+// 计算属性，用于显示普通文本
 const renderMathInElement = (text) => {
   if (!text) return ''
   
-  // 处理数学公式，将 \( 和 \) 之间的内容渲染为行内公式
-  // 将 \[ 和 \] 之间的内容渲染为块级公式
-  let html = text
-  
   // 处理特殊字符
   // 处理换行符
-  html = html.replace(/\\n/g, '<br>')
+  let html = text.replace(/\\n/g, '<br>')
   // 处理制表符
   html = html.replace(/\\t/g, '&nbsp;&nbsp;&nbsp;&nbsp;')
   // 处理空格
   html = html.replace(/\\s/g, ' ')
-  
-  // 处理数学公式
-  // 1. 处理行内公式
-  html = html.replace(/\\\((.*?)\\\)/g, (match, formula) => {
-    try {
-      return katex.renderToString(formula, {
-        throwOnError: false
-      })
-    } catch (error) {
-      console.error('KaTeX 渲染错误:', error)
-      return match
-    }
-  })
-  
-  // 2. 处理块级公式
-  html = html.replace(/\\\[(.*?)\\\]/g, (match, formula) => {
-    try {
-      return `<div class="katex-block">${katex.renderToString(formula, {
-        throwOnError: false,
-        displayMode: true
-      })}</div>`
-    } catch (error) {
-      console.error('KaTeX 渲染错误:', error)
-      return match
-    }
-  })
-  
-  // 3. 处理直接嵌入的数学公式
-  // 处理分数
-  html = html.replace(/\\frac\{([^}]+)\}\{([^}]+)\}/g, (match, numerator, denominator) => {
-    try {
-      return katex.renderToString(`\\frac{${numerator}}{${denominator}}`, {
-        throwOnError: false
-      })
-    } catch (error) {
-      console.error('KaTeX 渲染错误:', error)
-      return match
-    }
-  })
-  
-  // 处理上标
-  html = html.replace(/\^(\{[^}]+\}|[^\s]+)/g, (match, sup) => {
-    try {
-      return katex.renderToString(`^{${sup.replace(/\{|\}/g, '')}}`, {
-        throwOnError: false
-      })
-    } catch (error) {
-      console.error('KaTeX 渲染错误:', error)
-      return match
-    }
-  })
-  
-  // 处理下标
-  html = html.replace(/\_(\{[^}]+\}|[^\s]+)/g, (match, sub) => {
-    try {
-      return katex.renderToString(`_{${sub.replace(/\{|\}/g, '')}}`, {
-        throwOnError: false
-      })
-    } catch (error) {
-      console.error('KaTeX 渲染错误:', error)
-      return match
-    }
-  })
   
   // 处理分段和分点内容
   // 1. 清理文本，移除多余的空白
@@ -151,11 +82,11 @@ const renderMathInElement = (text) => {
   
   // 处理各个部分
   const sections = html.split(/\*\*\s*[💡📝❓]\s*[^*]+\s*\*\*/g)
-  const sectionTitles = html.match(/\*\*\s*[��❓]\s*[^*]+\s*\*\*/g) || []
+  const sectionTitles = html.match(/\*\*\s*[💡📝❓]\s*[^*]+\s*\*\*/g) || []
   
   // 遍历每个部分
   for (let i = 0; i < sections.length; i++) {
-    const section = sections[i].trim()
+    let section = sections[i].trim()
     if (!section) continue
     
     // 添加标题（如果有）
@@ -170,12 +101,14 @@ const renderMathInElement = (text) => {
       const points = section.split(/\s*-\s+/)
       points.forEach((point, index) => {
         if (point.trim()) {
+          // 直接显示原始文本，不进行数学公式渲染
           result += `<li>${point.trim()}</li>`
         }
       })
       result += '</ul>'
     } else {
       // 处理普通段落
+      // 直接显示原始文本，不进行数学公式渲染
       result += `<p class="content-paragraph">${section}</p>`
     }
   }
@@ -205,11 +138,11 @@ const handleQuestion = async (question) => {
     await chatAPI.askStream(
       question,
       selectedImage.value,
-      (chunk) => {
+      (accumulatedData) => {
         // 处理流式响应
-        console.log('收到响应:', chunk)
-        // 将接收到的 chunk 添加到当前 AI 回复中
-        currentAiResponse.value += chunk
+        console.log('收到响应:', accumulatedData)
+        // 直接替换当前 AI 回复，而不是追加
+        currentAiResponse.value = accumulatedData
       },
       (error) => {
         console.error('发送消息失败:', error)
@@ -461,23 +394,7 @@ h1::after {
   background: #a8a8a8;
 }
 
-/* KaTeX 样式 */
-.katex-block {
-  margin: 10px 0;
-  text-align: center;
-}
 
-.katex {
-  font-size: 1.1em !important;
-}
-
-.message-content :deep(.katex) {
-  display: inline-block;
-}
-
-.message-content :deep(.katex-display) {
-  margin: 0.5em 0;
-}
 
 /* 内容包装器样式 */
 .content-wrapper {

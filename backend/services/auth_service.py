@@ -59,7 +59,9 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
             expires_delta or timedelta(minutes=settings.access_token_expire_minutes)
     )
     to_encode.update({"exp": expire})
-    return jwt.encode(to_encode, settings.secret_key, algorithm=settings.algorithm)
+    token = jwt.encode(to_encode, settings.secret_key, algorithm=settings.algorithm)
+    logger.info(f"[Token生成] 生成的token: {token}")
+    return token
 
 
 async def get_user_by_username(db: AsyncSession, username: str) -> Optional[User]:
