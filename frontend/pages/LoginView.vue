@@ -69,6 +69,9 @@ const handleLogin = async () => {
     // 保存 token 到本地存储
     localStorage.setItem('token', response.access_token)
     
+    // 打印 token 日志
+    console.log('登录成功，token:', response.access_token)
+    
     alert('登录成功！')
     router.push('/ai-tutor')
   } catch (error) {
