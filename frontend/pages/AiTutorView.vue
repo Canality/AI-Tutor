@@ -1,5 +1,6 @@
 <template>
   <div class="ai-tutor-container">
+    <Navigation />
     <h1>AI Tutor</h1>
     <div class="chat-container">
       <div class="chat-messages">
@@ -10,8 +11,32 @@
         >
           <div class="message-content">{{ message.content }}</div>
         </div>
+        <div v-if="loading" class="message ai-message">
+          <div class="message-content">AI 正在思考中...</div>
+        </div>
       </div>
-      <QuestionInput @submit-question="handleQuestion" :disabled="loading" />
+      <div class="input-area">
+        <div class="input-with-image">
+          <QuestionInput 
+            @submit-question="handleQuestion" 
+            :disabled="loading" 
+            ref="questionInput"
+          />
+          <div class="upload-area">
+            <input 
+              type="file" 
+              accept="image/*" 
+              @change="handleImageSelect" 
+              :disabled="loading"
+              class="file-input"
+              id="image-upload"
+            />
+            <label for="image-upload" class="upload-btn" :disabled="loading">
+              📷 {{ selectedImage ? '已选择图片' : '上传图片' }}
+            </label>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 </template>
@@ -19,6 +44,7 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import QuestionInput from '../components/QuestionInput.vue'
+import Navigation from '../components/Navigation.vue'
 import { chatAPI } from '../services/apiService'
 
 const messages = ref([
@@ -26,95 +52,288 @@ const messages = ref([
   { type: 'ai', content: 'Hello! How can I help you today?' }
 ])
 const loading = ref(false)
-
-// 加载聊天历史
-onMounted(async () => {
-  try {
-    const history = await chatAPI.getChatHistory()
-    if (history.messages && history.messages.length > 0) {
-      messages.value = history.messages
-    }
-  } catch (error) {
-    console.error('加载聊天历史失败:', error)
-  }
-})
+const selectedImage = ref(null)
+const questionInput = ref(null)
 
 // 处理用户提问
 const handleQuestion = async (question) => {
+  if (!question.trim() && !selectedImage.value) return
+  
   // 添加用户消息到聊天记录
-  messages.value.push({ type: 'user', content: question })
+  let userMessage = question.trim()
+  if (selectedImage.value) {
+    userMessage += ' (上传了一张图片)'
+  }
+  messages.value.push({ type: 'user', content: userMessage })
   
   try {
     loading.value = true
-    const response = await chatAPI.sendMessage(question)
-    // 添加 AI 回复到聊天记录
-    messages.value.push({ type: 'ai', content: response.response })
+    
+    // 使用流式接口发送消息和图片
+    await chatAPI.askStream(
+      question,
+      selectedImage.value,
+      (chunk) => {
+        // 处理流式响应
+        // 这里可以实现打字效果
+        console.log('收到响应:', chunk)
+      },
+      (error) => {
+        console.error('发送消息失败:', error)
+        messages.value.push({ type: 'ai', content: '抱歉，发送消息失败，请稍后重试。' })
+      }
+    )
+    
+    // 模拟 AI 回复
+    // 实际项目中，这里会根据流式响应实时更新
+    setTimeout(() => {
+      messages.value.push({ type: 'ai', content: '这是 AI 的回复内容。' })
+      loading.value = false
+    }, 1000)
   } catch (error) {
     console.error('发送消息失败:', error)
     messages.value.push({ type: 'ai', content: '抱歉，发送消息失败，请稍后重试。' })
-  } finally {
     loading.value = false
+  } finally {
+    // 重置图片选择
+    selectedImage.value = null
+    // 重置文件输入
+    const fileInput = document.getElementById('image-upload')
+    if (fileInput) {
+      fileInput.value = ''
+    }
+  }
+}
+
+// 处理图片选择
+const handleImageSelect = (event) => {
+  const file = event.target.files[0]
+  if (file) {
+    selectedImage.value = file
+    console.log('已选择图片:', file.name)
   }
 }
 </script>
 
 <style scoped>
 .ai-tutor-container {
-  max-width: 800px;
-  margin: 50px auto;
-  padding: 20px;
-  border: 1px solid #ddd;
-  border-radius: 8px;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+  max-width: 1200px;
+  margin: 30px auto;
+  padding: 32px;
+  border-radius: 16px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.1);
   background-color: white;
+  position: relative;
+  overflow: hidden;
+}
+
+.ai-tutor-container::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: linear-gradient(90deg, #4a90e2, #357abd);
 }
 
 h1 {
   text-align: center;
   color: #333;
-  margin-bottom: 30px;
+  margin-bottom: 24px;
+  font-size: 24px;
+  font-weight: 700;
+  position: relative;
+  padding-bottom: 12px;
+}
+
+h1::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 80px;
+  height: 3px;
+  background: linear-gradient(90deg, #4a90e2, #357abd);
+  border-radius: 3px;
 }
 
 .chat-container {
-  height: 500px;
+  height: 600px;
   display: flex;
   flex-direction: column;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid #e8e8e8;
 }
 
 .chat-messages {
   flex: 1;
   overflow-y: auto;
-  margin-bottom: 20px;
-  padding: 20px;
-  border: 1px solid #eee;
-  border-radius: 4px;
+  padding: 24px;
   background-color: #f9f9f9;
+  position: relative;
+}
+
+.chat-messages::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, #e8e8e8, transparent);
 }
 
 .message {
-  margin-bottom: 15px;
-  max-width: 80%;
-  padding: 10px 15px;
+  margin-bottom: 16px;
+  max-width: 75%;
+  padding: 12px 16px;
   border-radius: 18px;
   word-wrap: break-word;
+  position: relative;
+  animation: messageSlideIn 0.3s ease forwards;
+  opacity: 0;
+  transform: translateY(10px);
+}
+
+@keyframes messageSlideIn {
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .user-message {
   align-self: flex-end;
-  background-color: #4a90e2;
+  background: linear-gradient(135deg, #4a90e2, #357abd);
   color: white;
   border-bottom-right-radius: 4px;
+  box-shadow: 0 2px 8px rgba(74, 144, 226, 0.2);
 }
 
 .ai-message {
   align-self: flex-start;
-  background-color: #e9e9e9;
+  background-color: white;
   color: #333;
   border-bottom-left-radius: 4px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+  border: 1px solid #e8e8e8;
 }
 
 .message-content {
   font-size: 14px;
   line-height: 1.5;
+}
+
+.input-area {
+  padding: 20px;
+  background-color: white;
+  border-top: 1px solid #e8e8e8;
+}
+
+.input-with-image {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.upload-area {
+  position: relative;
+  margin-top: 8px;
+}
+
+.file-input {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.upload-btn {
+  display: inline-block;
+  padding: 10px 20px;
+  background-color: #f0f5ff;
+  color: #1890ff;
+  border: 1px solid #d6e4ff;
+  border-radius: 20px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.upload-btn::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(24, 144, 255, 0.1);
+  transition: left 0.3s ease;
+}
+
+.upload-btn:hover::before {
+  left: 0;
+}
+
+.upload-btn:hover {
+  background-color: #e6f7ff;
+  border-color: #91d5ff;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(24, 144, 255, 0.2);
+}
+
+.upload-btn:disabled {
+  background-color: #f5f5f5;
+  color: #ccc;
+  border-color: #e8e8e8;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+.upload-btn:disabled::before {
+  display: none;
+}
+
+/* 自定义滚动条 */
+.chat-messages::-webkit-scrollbar {
+  width: 8px;
+}
+
+.chat-messages::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 4px;
+}
+
+.chat-messages::-webkit-scrollbar-thumb {
+  background: #c1c1c1;
+  border-radius: 4px;
+}
+
+.chat-messages::-webkit-scrollbar-thumb:hover {
+  background: #a8a8a8;
+}
+
+@media (max-width: 768px) {
+  .ai-tutor-container {
+    margin: 15px;
+    padding: 16px;
+  }
+  
+  .chat-container {
+    height: 400px;
+  }
+  
+  .message {
+    max-width: 85%;
+  }
 }
 </style>

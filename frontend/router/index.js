@@ -18,6 +18,16 @@ const router = createRouter({
       path: '/ai-tutor',
       name: 'ai-tutor',
       component: () => import('../pages/AiTutorView.vue')
+    },
+    {
+      path: '/profile',
+      name: 'profile',
+      component: () => import('../pages/ProfileView.vue')
+    },
+    {
+      path: '/exercises',
+      name: 'exercises',
+      component: () => import('../pages/ExercisesView.vue')
     }
   ]
 })
