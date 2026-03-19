@@ -74,7 +74,9 @@ class KnowledgePoint(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     parent = relationship("KnowledgePoint", remote_side=[id], backref="children")
-    questions = relationship("Question", secondary="question_knowledge_points", backref="knowledge_points")
+    # 关键修改：将 backref="knowledge_points" 改为 backref="related_knowledge_points"
+    # 新名称不会和 Question 模型中的 knowledge_points (JSON字段) 冲突
+    questions = relationship("Question", secondary="question_knowledge_points", backref="related_knowledge_points")
     user_mastery = relationship("UserKnowledgeMastery", back_populates="knowledge_point")
 
 

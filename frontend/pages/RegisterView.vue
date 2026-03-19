@@ -30,7 +30,9 @@
         />
       </div>
       
-      <button type="submit" class="register-btn">注册</button>
+      <button type="submit" class="register-btn" :disabled="loading">
+        {{ loading ? '注册中...' : '注册' }}
+      </button>
     </form>
     
     <p class="login-link">
@@ -40,8 +42,9 @@
 </template>
 
 <script setup>
-import { reactive } from 'vue'
+import { reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
+import { authAPI } from '../services/apiService'
 
 const form = reactive({
   username: '',
@@ -49,9 +52,10 @@ const form = reactive({
   confirmPassword: ''
 })
 
+const loading = ref(false)
 const router = useRouter()
 
-const handleRegister = () => {
+const handleRegister = async () => {
   if (form.password !== form.confirmPassword) {
     alert('两次输入的密码不一致！')
     return
@@ -62,8 +66,20 @@ const handleRegister = () => {
     return
   }
   
-  alert('注册成功！请登录')
-  router.push('/')
+  try {
+    loading.value = true
+    await authAPI.register({
+      username: form.username,
+      password: form.password
+    })
+    
+    alert('注册成功！请登录')
+    router.push('/')
+  } catch (error) {
+    alert('注册失败：' + (error.message || '请稍后重试'))
+  } finally {
+    loading.value = false
+  }
 }
 </script>
 
@@ -122,6 +138,11 @@ input:focus {
 
 .register-btn:hover {
   background-color: #389e0d;
+}
+
+.register-btn:disabled {
+  background-color: #ccc;
+  cursor: not-allowed;
 }
 
 .login-link {
