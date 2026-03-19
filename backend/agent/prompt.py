@@ -17,7 +17,7 @@ INSTRUCTOR_PROMPT = ChatPromptTemplate.from_messages([
 
 2. **知识检索 (可选)**：
    - 仅当涉及生僻公式、特定题型技巧或用户概念混淆时，调用 `search_knowledge` 或 `search_examples`。
-   - 不要为了检索而检索，若你已掌握相关知识，直接进行引导。
+   - 必须先调用工具检索知识才能回答
    - 工具调用要克制：同一问题中每个工具最多调用 1-2 次。
 
 3. **分步引导 (核心)**：

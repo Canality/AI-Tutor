@@ -9,9 +9,12 @@
           :key="index"
           :class="['message', message.type === 'user' ? 'user-message' : 'ai-message']"
         >
-          <div class="message-content">{{ message.content }}</div>
+          <div class="message-content" v-html="renderMathInElement(message.content)"></div>
         </div>
-        <div v-if="loading" class="message ai-message">
+        <div v-if="isStreaming && currentAiResponse" class="message ai-message">
+          <div class="message-content" v-html="renderMathInElement(currentAiResponse)"></div>
+        </div>
+        <div v-else-if="loading" class="message ai-message">
           <div class="message-content">AI 正在思考中...</div>
         </div>
       </div>
@@ -42,10 +45,12 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import QuestionInput from '../components/QuestionInput.vue'
 import Navigation from '../components/Navigation.vue'
 import { chatAPI } from '../services/apiService'
+import katex from 'katex'
+import 'katex/dist/katex.min.css'
 
 const messages = ref([
   { type: 'user', content: 'Hello, AI Tutor!' },
@@ -54,6 +59,44 @@ const messages = ref([
 const loading = ref(false)
 const selectedImage = ref(null)
 const questionInput = ref(null)
+const currentAiResponse = ref('')
+const isStreaming = ref(false)
+
+// 计算属性，用于渲染数学公式
+const renderMathInElement = (text) => {
+  if (!text) return ''
+  
+  // 处理数学公式，将 \( 和 \) 之间的内容渲染为行内公式
+  // 将 \[ 和 \] 之间的内容渲染为块级公式
+  let html = text
+  
+  // 处理行内公式
+  html = html.replace(/\\\((.*?)\\\)/g, (match, formula) => {
+    try {
+      return katex.renderToString(formula, {
+        throwOnError: false
+      })
+    } catch (error) {
+      console.error('KaTeX 渲染错误:', error)
+      return match
+    }
+  })
+  
+  // 处理块级公式
+  html = html.replace(/\\\[(.*?)\\\]/g, (match, formula) => {
+    try {
+      return `<div class="katex-block">${katex.renderToString(formula, {
+        throwOnError: false,
+        displayMode: true
+      })}</div>`
+    } catch (error) {
+      console.error('KaTeX 渲染错误:', error)
+      return match
+    }
+  })
+  
+  return html
+}
 
 // 处理用户提问
 const handleQuestion = async (question) => {
@@ -68,6 +111,8 @@ const handleQuestion = async (question) => {
   
   try {
     loading.value = true
+    isStreaming.value = true
+    currentAiResponse.value = ''
     
     // 使用流式接口发送消息和图片
     await chatAPI.askStream(
@@ -75,25 +120,32 @@ const handleQuestion = async (question) => {
       selectedImage.value,
       (chunk) => {
         // 处理流式响应
-        // 这里可以实现打字效果
         console.log('收到响应:', chunk)
+        // 将接收到的 chunk 添加到当前 AI 回复中
+        currentAiResponse.value += chunk
       },
       (error) => {
         console.error('发送消息失败:', error)
         messages.value.push({ type: 'ai', content: '抱歉，发送消息失败，请稍后重试。' })
+        loading.value = false
+        isStreaming.value = false
       }
     )
     
-    // 模拟 AI 回复
-    // 实际项目中，这里会根据流式响应实时更新
+    // 当流式传输结束时，添加完整的 AI 回复到聊天记录
     setTimeout(() => {
-      messages.value.push({ type: 'ai', content: '这是 AI 的回复内容。' })
+      if (currentAiResponse.value) {
+        messages.value.push({ type: 'ai', content: currentAiResponse.value })
+      }
       loading.value = false
-    }, 1000)
+      isStreaming.value = false
+      currentAiResponse.value = ''
+    }, 500)
   } catch (error) {
     console.error('发送消息失败:', error)
     messages.value.push({ type: 'ai', content: '抱歉，发送消息失败，请稍后重试。' })
     loading.value = false
+    isStreaming.value = false
   } finally {
     // 重置图片选择
     selectedImage.value = null
@@ -320,6 +372,24 @@ h1::after {
 
 .chat-messages::-webkit-scrollbar-thumb:hover {
   background: #a8a8a8;
+}
+
+/* KaTeX 样式 */
+.katex-block {
+  margin: 10px 0;
+  text-align: center;
+}
+
+.katex {
+  font-size: 1.1em !important;
+}
+
+.message-content :deep(.katex) {
+  display: inline-block;
+}
+
+.message-content :deep(.katex-display) {
+  margin: 0.5em 0;
 }
 
 @media (max-width: 768px) {
