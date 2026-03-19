@@ -3,24 +3,59 @@
     <h1>AI Tutor</h1>
     <div class="chat-container">
       <div class="chat-messages">
-        <div class="message user-message">
-          <div class="message-content">Hello, AI Tutor!</div>
-        </div>
-        <div class="message ai-message">
-          <div class="message-content">Hello! How can I help you today?</div>
+        <div 
+          v-for="(message, index) in messages" 
+          :key="index"
+          :class="['message', message.type === 'user' ? 'user-message' : 'ai-message']"
+        >
+          <div class="message-content">{{ message.content }}</div>
         </div>
       </div>
-      <QuestionInput @submit-question="handleQuestion" />
+      <QuestionInput @submit-question="handleQuestion" :disabled="loading" />
     </div>
   </div>
 </template>
 
 <script setup>
-import QuestionInput from '../components/QuestionInput.vue';
+import { ref, onMounted } from 'vue'
+import QuestionInput from '../components/QuestionInput.vue'
+import { chatAPI } from '../services/apiService'
 
-const handleQuestion = (question) => {
-  console.log('用户提问：', question);
-};
+const messages = ref([
+  { type: 'user', content: 'Hello, AI Tutor!' },
+  { type: 'ai', content: 'Hello! How can I help you today?' }
+])
+const loading = ref(false)
+
+// 加载聊天历史
+onMounted(async () => {
+  try {
+    const history = await chatAPI.getChatHistory()
+    if (history.messages && history.messages.length > 0) {
+      messages.value = history.messages
+    }
+  } catch (error) {
+    console.error('加载聊天历史失败:', error)
+  }
+})
+
+// 处理用户提问
+const handleQuestion = async (question) => {
+  // 添加用户消息到聊天记录
+  messages.value.push({ type: 'user', content: question })
+  
+  try {
+    loading.value = true
+    const response = await chatAPI.sendMessage(question)
+    // 添加 AI 回复到聊天记录
+    messages.value.push({ type: 'ai', content: response.response })
+  } catch (error) {
+    console.error('发送消息失败:', error)
+    messages.value.push({ type: 'ai', content: '抱歉，发送消息失败，请稍后重试。' })
+  } finally {
+    loading.value = false
+  }
+}
 </script>
 
 <style scoped>

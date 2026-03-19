@@ -21,7 +21,9 @@
         />
       </div>
       
-      <button type="submit" class="login-btn">登录</button>
+      <button type="submit" class="login-btn" :disabled="loading">
+        {{ loading ? '登录中...' : '登录' }}
+      </button>
     </form>
     
     <p class="register-link">
@@ -31,8 +33,9 @@
 </template>
 
 <script setup>
-import { reactive } from 'vue'
+import { reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
+import { authAPI } from '../services/apiService'
 
 // 创建响应式数据
 const form = reactive({
@@ -40,10 +43,11 @@ const form = reactive({
   password: ''
 })
 
+const loading = ref(false)
 const router = useRouter()
 
 // 登录处理函数
-const handleLogin = () => {
+const handleLogin = async () => {
   console.log('登录信息：', form.username, form.password)
   
   if (!form.username || !form.password) {
@@ -51,8 +55,23 @@ const handleLogin = () => {
     return
   }
   
-  alert('登录成功！')
-  router.push('/ai-tutor')
+  try {
+    loading.value = true
+    const response = await authAPI.login({
+      username: form.username,
+      password: form.password
+    })
+    
+    // 保存 token 到本地存储
+    localStorage.setItem('token', response.access_token)
+    
+    alert('登录成功！')
+    router.push('/ai-tutor')
+  } catch (error) {
+    alert('登录失败：' + (error.message || '请检查用户名和密码'))
+  } finally {
+    loading.value = false
+  }
 }
 </script>
 
@@ -111,6 +130,11 @@ input:focus {
 
 .login-btn:hover {
   background-color: #357abd;
+}
+
+.login-btn:disabled {
+  background-color: #ccc;
+  cursor: not-allowed;
 }
 
 .register-link {

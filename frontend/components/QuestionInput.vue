@@ -4,8 +4,9 @@
       v-model="question"
       placeholder="请输入您的问题..."
       @keydown.enter.exact="handleSubmit"
+      :disabled="disabled"
     ></textarea>
-    <button @click="handleSubmit">发送</button>
+    <button @click="handleSubmit" :disabled="disabled">发送</button>
   </div>
 </template>
 
@@ -13,10 +14,17 @@
 import { ref } from 'vue'
 
 const emit = defineEmits(['submit-question'])
+const props = defineProps({
+  disabled: {
+    type: Boolean,
+    default: false
+  }
+})
+
 const question = ref('')
 
 const handleSubmit = () => {
-  if (question.value.trim()) {
+  if (question.value.trim() && !props.disabled) {
     emit('submit-question', question.value)
     question.value = ''
   }
@@ -42,6 +50,11 @@ textarea {
   min-height: 60px;
 }
 
+textarea:disabled {
+  background-color: #f5f5f5;
+  cursor: not-allowed;
+}
+
 button {
   padding: 0 20px;
   background-color: #4a90e2;
@@ -56,5 +69,10 @@ button {
 
 button:hover {
   background-color: #357abd;
+}
+
+button:disabled {
+  background-color: #ccc;
+  cursor: not-allowed;
 }
 </style>
