@@ -62,7 +62,7 @@ const questionInput = ref(null)
 const currentAiResponse = ref('')
 const isStreaming = ref(false)
 
-// 计算属性，用于渲染数学公式
+// 计算属性，用于渲染数学公式和格式化内容
 const renderMathInElement = (text) => {
   if (!text) return ''
   
@@ -70,7 +70,16 @@ const renderMathInElement = (text) => {
   // 将 \[ 和 \] 之间的内容渲染为块级公式
   let html = text
   
-  // 处理行内公式
+  // 处理特殊字符
+  // 处理换行符
+  html = html.replace(/\\n/g, '<br>')
+  // 处理制表符
+  html = html.replace(/\\t/g, '&nbsp;&nbsp;&nbsp;&nbsp;')
+  // 处理空格
+  html = html.replace(/\\s/g, ' ')
+  
+  // 处理数学公式
+  // 1. 处理行内公式
   html = html.replace(/\\\((.*?)\\\)/g, (match, formula) => {
     try {
       return katex.renderToString(formula, {
@@ -82,7 +91,7 @@ const renderMathInElement = (text) => {
     }
   })
   
-  // 处理块级公式
+  // 2. 处理块级公式
   html = html.replace(/\\\[(.*?)\\\]/g, (match, formula) => {
     try {
       return `<div class="katex-block">${katex.renderToString(formula, {
@@ -95,7 +104,85 @@ const renderMathInElement = (text) => {
     }
   })
   
-  return html
+  // 3. 处理直接嵌入的数学公式
+  // 处理分数
+  html = html.replace(/\\frac\{([^}]+)\}\{([^}]+)\}/g, (match, numerator, denominator) => {
+    try {
+      return katex.renderToString(`\\frac{${numerator}}{${denominator}}`, {
+        throwOnError: false
+      })
+    } catch (error) {
+      console.error('KaTeX 渲染错误:', error)
+      return match
+    }
+  })
+  
+  // 处理上标
+  html = html.replace(/\^(\{[^}]+\}|[^\s]+)/g, (match, sup) => {
+    try {
+      return katex.renderToString(`^{${sup.replace(/\{|\}/g, '')}}`, {
+        throwOnError: false
+      })
+    } catch (error) {
+      console.error('KaTeX 渲染错误:', error)
+      return match
+    }
+  })
+  
+  // 处理下标
+  html = html.replace(/\_(\{[^}]+\}|[^\s]+)/g, (match, sub) => {
+    try {
+      return katex.renderToString(`_{${sub.replace(/\{|\}/g, '')}}`, {
+        throwOnError: false
+      })
+    } catch (error) {
+      console.error('KaTeX 渲染错误:', error)
+      return match
+    }
+  })
+  
+  // 处理分段和分点内容
+  // 1. 清理文本，移除多余的空白
+  html = html.trim()
+  
+  // 2. 处理思路点拨、详细引导、轮到你了等部分
+  // 先将整个内容包装在一个容器中
+  let result = '<div class="content-wrapper">'
+  
+  // 处理各个部分
+  const sections = html.split(/\*\*\s*[💡📝❓]\s*[^*]+\s*\*\*/g)
+  const sectionTitles = html.match(/\*\*\s*[��❓]\s*[^*]+\s*\*\*/g) || []
+  
+  // 遍历每个部分
+  for (let i = 0; i < sections.length; i++) {
+    const section = sections[i].trim()
+    if (!section) continue
+    
+    // 添加标题（如果有）
+    if (i < sectionTitles.length) {
+      const title = sectionTitles[i].replace(/\*\*/g, '').trim()
+      result += `<h3 class="section-title">${title}</h3>`
+    }
+    
+    // 处理分点内容
+    if (section.includes('- ')) {
+      result += '<ul class="points-list">'
+      const points = section.split(/\s*-\s+/)
+      points.forEach((point, index) => {
+        if (point.trim()) {
+          result += `<li>${point.trim()}</li>`
+        }
+      })
+      result += '</ul>'
+    } else {
+      // 处理普通段落
+      result += `<p class="content-paragraph">${section}</p>`
+    }
+  }
+  
+  result += '</div>'
+  
+  return result
 }
 
 // 处理用户提问
@@ -390,6 +477,55 @@ h1::after {
 
 .message-content :deep(.katex-display) {
   margin: 0.5em 0;
+}
+
+/* 内容包装器样式 */
+.content-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* 分点内容样式 */
+.section-title {
+  font-size: 16px;
+  font-weight: 600;
+  margin: 0 0 12px 0;
+  color: #333;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #e8e8e8;
+}
+
+.points-list {
+  margin: 0 0 16px 0;
+  padding-left: 24px;
+  list-style-type: none;
+}
+
+.points-list li {
+  margin-bottom: 10px;
+  line-height: 1.5;
+  position: relative;
+  padding-left: 16px;
+}
+
+.points-list li::before {
+  content: '•';
+  position: absolute;
+  left: 0;
+  color: #4a90e2;
+  font-weight: bold;
+  font-size: 16px;
+}
+
+/* 段落样式 */
+.content-paragraph {
+  margin: 0 0 16px 0;
+  line-height: 1.6;
+  color: #333;
 }
 
 @media (max-width: 768px) {
