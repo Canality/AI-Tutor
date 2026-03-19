@@ -41,12 +41,6 @@ async def get_user_by_username(db: AsyncSession, username: str) -> Optional[User
     return result.scalar_one_or_none()
 
 
-async def get_user_by_email(db: AsyncSession, email: str) -> Optional[User]:
-    stmt = select(User).where(User.email == email)
-    result = await db.execute(stmt)
-    return result.scalar_one_or_none()
-
-
 async def register_user(db: AsyncSession, payload: RegisterRequest) -> User:
     existing_user = await get_user_by_username(db, payload.username)
     if existing_user:
@@ -55,17 +49,9 @@ async def register_user(db: AsyncSession, payload: RegisterRequest) -> User:
             detail="Username already exists",
         )
 
-    if payload.email:
-        existing_email_user = await get_user_by_email(db, payload.email)
-        if existing_email_user:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Email already exists",
-            )
-
     user = User(
         username=payload.username,
-        email=payload.email,
+        email=None,
         password_hash=get_password_hash(payload.password),
     )
     db.add(user)
