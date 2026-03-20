@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
+from typing import Optional
 from database.db import get_db
 from services.recommendation_service import recommend_exercises
 
@@ -10,17 +11,19 @@ router = APIRouter(prefix="/exercises", tags=["Exercises"])
 async def get_recommended_exercises(
     user_id: int = Query(..., description="用户ID (测试用)"),
     limit: int = Query(5, description="推荐数量", ge=1, le=20),
+    algorithm_version: Optional[str] = Query(None, description="A/B 测试算法版本"),
     db: AsyncSession = Depends(get_db)
 ):
     """
-    获取推荐的练习题
+    获取推荐的练习题 (支持 A/B 测试)
     
-    基于用户的薄弱知识点进行个性化推荐
+    基于用户的薄弱知识点进行个性化推荐。
+    可通过 algorithm_version 参数指定算法版本进行 A/B 测试。
     
-    测试示例: GET /api/exercises/recommend?user_id=1&limit=5
+    测试示例: GET /api/exercises/recommend?user_id=1&limit=5&algorithm_version=v2.0
     """
     try:
-        recommendations = await recommend_exercises(db, user_id, limit)
+        recommendations = await recommend_exercises(db, user_id, limit, algorithm_version)
         
         return {
             "success": True,
