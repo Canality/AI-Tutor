@@ -2,7 +2,7 @@
 
 ## 环境要求
 
-- Python 3.9+
+- Python 3.9
 - MySQL 8.0+
 - Redis 6.0+
 

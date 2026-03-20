@@ -41,7 +41,7 @@
 
 | 模块 | 技术栈 |
 |------|--------|
-| 后端 | Python, FastAPI, SQLAlchemy async, Celery + Redis |
+| 后端 | Python3.9, FastAPI, SQLAlchemy async, Celery + Redis |
 | Agent | Python, LangChain, LlamaIndex, RAG |
 | 数据库 | MySQL, Chroma |
 | 前端 | Vue3, Axios, SSE |
