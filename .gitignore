@@ -205,3 +205,6 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# 前端 Node.js 依赖（核心：忽略所有 node_modules 文件夹）
+node_modules/
