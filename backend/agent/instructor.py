@@ -24,7 +24,7 @@ class InstructorAgent:
             verbose=settings.verbose,
             handle_parsing_errors=True,
             max_iterations=12,
-            max_execution_time=90,
+            max_execution_time=360,
             early_stopping_method="generate",
             return_intermediate_steps=False
         )
