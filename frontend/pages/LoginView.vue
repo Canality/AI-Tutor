@@ -1,3 +1,4 @@
+import { sendQuestion } from '../api/tutor.js'
 <template>
   <div class="login-page">
     <div class="split-container">
