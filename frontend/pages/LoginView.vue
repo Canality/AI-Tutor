@@ -54,7 +54,12 @@ import { sendQuestion } from '../api/tutor.js'
               </label>
               <a href="#" class="forgot">忘记密码？</a>
             </div>
-            <button type="submit" class="login-btn">登录</button>
+            <div v-if="error" class="error-message">
+              {{ error }}
+            </div>
+            <button type="submit" class="login-btn" :disabled="loading" :class="{ 'loading': loading }">
+              {{ loading ? '登录中...' : '登录' }}
+            </button>
           </form>
           
           <div class="feature-trio">
@@ -87,6 +92,7 @@ import { sendQuestion } from '../api/tutor.js'
 <script setup>
 import { reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
+import { authAPI } from '../services/apiService'
 
 const form = reactive({
   username: '',
@@ -94,22 +100,44 @@ const form = reactive({
 })
 const rememberMe = ref(false)
 const router = useRouter()
+const loading = ref(false)
+const error = ref('')
 
-const handleLogin = () => {
+const handleLogin = async () => {
   if (!form.username || !form.password) {
-    alert('请填写完整信息')
+    error.value = '请填写完整信息'
     return
   }
   
-  // 保存登录用户信息（兼容注册时的数据结构）
-  localStorage.setItem('user_info', JSON.stringify({
-    username: form.username,
-    name: form.username,
-    avatar: '👤',
-    loginTime: new Date().toISOString()
-  }))
+  loading.value = true
+  error.value = ''
   
-  router.push('/ai-tutor')
+  try {
+    // 调用后端登录接口
+    const response = await authAPI.login({
+      username: form.username,
+      password: form.password
+    })
+    
+    // 保存token到本地存储
+    if (response.access_token) {
+      localStorage.setItem('token', response.access_token)
+    }
+    
+    // 保存登录用户信息（兼容注册时的数据结构）
+    localStorage.setItem('user_info', JSON.stringify({
+      username: form.username,
+      name: form.username,
+      avatar: '👤',
+      loginTime: new Date().toISOString()
+    }))
+    
+    router.push('/ai-tutor')
+  } catch (err) {
+    error.value = err.message || '登录失败，请检查用户名和密码'
+  } finally {
+    loading.value = false
+  }
 }
 </script>
 
@@ -305,10 +333,50 @@ const handleLogin = () => {
   margin-bottom: 30px;
 }
 
-.login-btn:hover { 
+.login-btn:hover:not(:disabled) { 
   background: #000; 
   transform: translateY(-2px);
   box-shadow: 0 8px 20px rgba(0,0,0,0.2);
+}
+
+.login-btn:disabled {
+  background: #ccc;
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.login-btn.loading {
+  position: relative;
+  color: transparent;
+}
+
+.login-btn.loading::after {
+  content: '';
+  position: absolute;
+  width: 20px;
+  height: 20px;
+  top: 50%;
+  left: 50%;
+  margin-left: -10px;
+  margin-top: -10px;
+  border: 2px solid #ffffff;
+  border-radius: 50%;
+  border-top-color: transparent;
+  animation: spinner 0.8s linear infinite;
+}
+
+@keyframes spinner {
+  to { transform: rotate(360deg); }
+}
+
+.error-message {
+  background-color: #fff2f0;
+  border: 1px solid #ffccc7;
+  color: #ff4d4f;
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-size: 14px;
+  margin-bottom: 16px;
 }
 
 .feature-trio {

@@ -97,6 +97,9 @@
               <span class="error-msg" v-if="errors.agreement">{{ errors.agreement }}</span>
             </div>
             
+            <div v-if="errors.server" class="error-message">
+              {{ errors.server }}
+            </div>
             <button 
               type="submit" 
               class="register-btn"
@@ -138,6 +141,7 @@
 <script setup>
 import { reactive, ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
+import { authAPI } from '../services/apiService'
 
 const router = useRouter()
 
@@ -154,7 +158,8 @@ const errors = reactive({
   email: '',
   password: '',
   confirmPassword: '',
-  agreement: ''
+  agreement: '',
+  server: ''
 })
 
 const showPassword = ref(false)
@@ -249,10 +254,15 @@ const handleRegister = async () => {
   if (!isFormValid.value) return
 
   isSubmitting.value = true
+  errors.server = ''
   
-  // 模拟API调用
-  setTimeout(() => {
-    isSubmitting.value = false
+  try {
+    // 调用后端注册接口
+    await authAPI.register({
+      username: form.username,
+      email: form.email,
+      password: form.password
+    })
     
     // 保存注册用户信息到 localStorage（供主界面读取）
     localStorage.setItem('user_info', JSON.stringify({
@@ -265,7 +275,11 @@ const handleRegister = async () => {
     
     alert('🎉 注册成功！欢迎加入AI Tutor')
     router.push('/')
-  }, 1500)
+  } catch (err) {
+    errors.server = err.message || '注册失败，请稍后重试'
+  } finally {
+    isSubmitting.value = false
+  }
 }
 </script>
 
@@ -426,6 +440,16 @@ const handleRegister = async () => {
   font-size: 12px;
   margin-top: 6px;
   margin-left: 4px;
+}
+
+.error-message {
+  background-color: #fff2f0;
+  border: 1px solid #ffccc7;
+  color: #ff4d4f;
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-size: 14px;
+  margin-bottom: 16px;
 }
 
 .input-group label {
