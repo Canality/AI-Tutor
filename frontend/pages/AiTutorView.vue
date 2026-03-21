@@ -364,6 +364,7 @@
 <script setup>
 import { ref, reactive, nextTick, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
+import { chatAPI } from '../services/apiService'
 
 const router = useRouter()
 
@@ -604,7 +605,7 @@ const clearImage = () => {
   if (fileInput.value) fileInput.value.value = ''
 }
 
-const submitQuestion = () => {
+const submitQuestion = async () => {
   if ((!questionText.value.trim() && !previewImage.value) || isLoading.value) return
   if (!currentConversation.value) createNewConversation()
   
@@ -647,13 +648,45 @@ const submitQuestion = () => {
   
   nextTick(() => scrollToBottom())
   
-  // 模拟AI回复
-  setTimeout(() => {
-    aiMessage.content = `【AI解答】\n\n针对您的问题："${question}"\n\n**解题思路：**\n1. 首先分析题目条件和要求\n2. 建立相应的数学模型或逻辑框架\n3. 逐步推导计算过程\n4. 验证结果的正确性\n\n**详细步骤：**\n...\n\n希望这个解答对您有帮助！如有疑问可以继续追问。`
+  // 调用后端AI问答接口
+  try {
+    // 准备图片文件
+    let imageFile = null
+    if (image) {
+      // 从预览URL创建File对象
+      const response = await fetch(image)
+      const blob = await response.blob()
+      imageFile = new File([blob], 'image.jpg', { type: blob.type })
+    }
+    
+    // 调用流式API
+    await chatAPI.askStream(
+      question,
+      imageFile,
+      (accumulatedData) => {
+        // 更新AI回复内容
+        aiMessage.content = accumulatedData
+        aiMessage.loading = false
+        saveConversations()
+        nextTick(() => scrollToBottom())
+      },
+      (error) => {
+        console.error('发送消息失败:', error)
+        aiMessage.content = '抱歉，发送消息失败，请稍后重试。'
+        aiMessage.loading = false
+        saveConversations()
+        nextTick(() => scrollToBottom())
+      }
+    )
+  } catch (error) {
+    console.error('发送消息失败:', error)
+    aiMessage.content = '抱歉，发送消息失败，请稍后重试。'
     aiMessage.loading = false
     saveConversations()
     nextTick(() => scrollToBottom())
-  }, 1500)
+  } finally {
+    isLoading.value = false
+  }
 }
 
 // ==================== 头像上传 ====================
