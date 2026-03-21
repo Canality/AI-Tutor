@@ -9,8 +9,14 @@
   box-sizing: border-box;
 }
 
+html, body, #app {
+  height: 100%;
+  width: 100%;
+  overflow-x: hidden;
+}
+
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-  background-color: #f5f5f5;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background-color: #f5f5f7;
 }
 </style>
