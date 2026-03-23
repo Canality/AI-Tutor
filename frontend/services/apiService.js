@@ -1,10 +1,10 @@
 // API 服务层，用于与后端进行通信
 
-const API_BASE_URL = 'http://localhost:8000'; // 后端服务地址
-
 // 通用请求方法
 async function request(endpoint, options = {}) {
-  const url = `${API_BASE_URL}/api${endpoint}`;
+  // 使用相对路径，通过 Vite 代理转发到后端
+  const url = `/api${endpoint}`;
+  console.log('请求URL:', url);
   
   // 设置默认请求头
   const headers = {
@@ -19,17 +19,21 @@ async function request(endpoint, options = {}) {
   }
   
   try {
+    console.log('发送请求:', url, options);
     const response = await fetch(url, {
       ...options,
       headers,
     });
     
+    console.log('收到响应:', response.status, response.statusText);
+    
     // 解析响应数据
     const data = await response.json();
+    console.log('响应数据:', data);
     
     // 检查响应状态
     if (!response.ok) {
-      throw new Error(data.message || '请求失败');
+      throw new Error(data.detail || data.message || '请求失败');
     }
     
     return data;
@@ -75,7 +79,7 @@ export const chatAPI = {
   
   // 流式获取解答 (SSE)，支持图片上传
   askStream: async (message, imageFile, onMessage, onError) => {
-    const url = `${API_BASE_URL}/api/chat/ask-stream`;
+    const url = `/api/chat/ask-stream`;
     const token = localStorage.getItem('token');
     
     // HTML实体解码函数

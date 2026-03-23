@@ -1,4 +1,3 @@
-import { sendQuestion } from '../api/tutor.js'
 <template>
   <div class="login-page">
     <div class="split-container">
@@ -113,15 +112,20 @@ const handleLogin = async () => {
   error.value = ''
   
   try {
+    console.log('开始登录请求:', { username: form.username })
+    
     // 调用后端登录接口
     const response = await authAPI.login({
       username: form.username,
       password: form.password
     })
     
+    console.log('登录响应:', response)
+    
     // 保存token到本地存储
     if (response.access_token) {
       localStorage.setItem('token', response.access_token)
+      console.log('Token 已保存')
     }
     
     // 保存登录用户信息（兼容注册时的数据结构）
@@ -132,8 +136,11 @@ const handleLogin = async () => {
       loginTime: new Date().toISOString()
     }))
     
-    router.push('/ai-tutor')
+    console.log('准备跳转到 /ai-tutor')
+    await router.push('/ai-tutor')
+    console.log('跳转完成')
   } catch (err) {
+    console.error('登录错误:', err)
     error.value = err.message || '登录失败，请检查用户名和密码'
   } finally {
     loading.value = false
