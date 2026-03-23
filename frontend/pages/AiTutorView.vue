@@ -228,6 +228,14 @@ export default {
       
       try {
         const token = localStorage.getItem('token')
+        
+        // 检查 token 是否存在
+        if (!token) {
+          alert('登录已过期，请重新登录')
+          this.$router.push('/')
+          return
+        }
+        
         const formData = new FormData()
         formData.append('question', userQuestion)
         if (this.selectedImage) {
@@ -237,10 +245,18 @@ export default {
         const response = await fetch('/api/chat/ask-stream', {
           method: 'POST',
           headers: {
-            ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+            'Authorization': `Bearer ${token}`
           },
           body: formData
         })
+        
+        if (response.status === 401) {
+          alert('登录已过期，请重新登录')
+          localStorage.removeItem('token')
+          localStorage.removeItem('user_info')
+          this.$router.push('/')
+          return
+        }
         
         if (!response.ok) {
           throw new Error('请求失败')
