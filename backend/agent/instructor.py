@@ -1,47 +1,50 @@
 from typing import List, Dict, Any, Optional, AsyncGenerator
-from langchain.agents import AgentExecutor, create_openai_tools_agent
-from langchain_core.messages import BaseMessage, HumanMessage, AIMessage
 from langchain_openai import ChatOpenAI
-from agent.prompt import INSTRUCTOR_PROMPT
-from agent.tools import get_tools
+from langchain_core.messages import BaseMessage, HumanMessage, AIMessage
 from utils.config import settings
 from utils.logger import logger
-from utils.volc_engine import volc_client
+
+
+# 简单的系统提示词
+SYSTEM_PROMPT = """你是一位经验丰富的高中数学数列辅导老师，擅长"苏格拉底式教学法"。
+
+你的目标不是直接给出答案，而是通过提问和引导，帮助学生自己推导出答案。
+
+## 回答格式
+
+请严格按照以下格式组织回复：
+
+### 💡 思路点拨
+（简短说明当前步骤的核心逻辑，1-2句话）
+
+### 📝 详细引导
+（具体的推导或解释）
+
+格式规则：
+1. 每个 ### 标题独占一行
+2. 每个公式必须单独成行，使用 $...$ 包裹
+3. 公式中的下标使用 _ 符号，如 $a_1$, $a_n$
+4. 每个计算步骤单独成行
+5. 不同的计算步骤之间必须换行
+
+### ❓ 轮到你了
+（向用户提出的具体问题，引导下一步思考）
+
+## 教学原则
+
+1. **分步引导**：每次只讲解一个关键步骤，不要一次性给出完整解答
+2. **鼓励探索**：解释完后必须提出引导性问题，让学生自己思考
+3. **错误诊断**：如果学生回答错误，指出具体错误点并给出小提示
+4. **完整性**：每个步骤的解答必须完整，不要中途截断
+"""
 
 
 class InstructorAgent:
     def __init__(self):
-        self.tools = get_tools()
         self.llm = self._init_llm()
-        self.agent = create_openai_tools_agent(
-            llm=self.llm,
-            tools=self.tools,
-            prompt=INSTRUCTOR_PROMPT,
-        )
-        self.agent_executor = AgentExecutor(
-            agent=self.agent,
-            tools=self.tools,
-            verbose=settings.verbose,
-            handle_parsing_errors=True,
-            max_iterations=12,
-            max_execution_time=360,
-            early_stopping_method="generate",
-            return_intermediate_steps=False
-        )
-
 
     def _init_llm(self):
-        if settings.volc_access_key and settings.volc_model:
-            logger.info("initializing volc client")
-            return ChatOpenAI(
-                model=settings.volc_model,
-                temperature=settings.temperature,
-                api_key=settings.volc_access_key,
-                base_url=f"https://{settings.volc_endpoint}/api/v3",
-                streaming=True,
-                # max_tokens=settings.max_tokens
-            )
-        elif settings.openai_api_key:
+        if settings.openai_api_key:
             logger.info("initializing openai client")
             return ChatOpenAI(
                 model=settings.llm_model,
@@ -49,74 +52,92 @@ class InstructorAgent:
                 api_key=settings.openai_api_key,
                 base_url=settings.openai_api_base,
                 streaming=True,
-                # max_tokens=settings.max_tokens
+                max_tokens=4096
             )
         else:
             logger.error("invalid openai api key")
             raise ValueError("invalid openai api key")
+
+    def _build_prompt(self, question: str, chat_history: Optional[List[BaseMessage]] = None) -> str:
+        """构建完整的提示词"""
+        # 构建历史消息文本
+        history_text = ""
+        if chat_history:
+            history_parts = []
+            for msg in chat_history[-6:]:
+                if isinstance(msg, HumanMessage):
+                    history_parts.append(f"学生：{msg.content}")
+                elif isinstance(msg, AIMessage):
+                    history_parts.append(f"老师：{msg.content}")
+            if history_parts:
+                history_text = "\n\n".join(history_parts) + "\n\n"
+        
+        # 组合完整提示词
+        full_prompt = f"""{SYSTEM_PROMPT}
+
+{history_text}学生问题：{question}
+
+老师回答："""
+        return full_prompt
 
     async def solve(
             self,
             question: str,
             chat_history: Optional[List[BaseMessage]] = None,
     ) -> Dict[str, Any]:
-
         try:
-            chat_history = chat_history or []
             logger.info(f"start solving {question[:100]}")
-            result = await self.agent_executor.ainvoke(
-                {
-                    "input": question,
-                    "chat_history": chat_history
-                }
-            )
+            
+            # 构建完整提示词
+            prompt = self._build_prompt(question, chat_history)
+            
+            # 调用 LLM
+            result = await self.llm.ainvoke(prompt)
+            answer = result.content
+            
             logger.info(f"end solving {question[:100]}")
-            new_chat_history = chat_history + [
+            
+            new_chat_history = (chat_history or []) + [
                 HumanMessage(content=question),
-                AIMessage(content=result["output"])
+                AIMessage(content=answer)
             ]
 
             return {
                 "success": True,
-                "answer": result["output"],
+                "answer": answer,
                 "chat_history": new_chat_history
             }
         except Exception as e:
-            logger.error(f"failed to solve {e}")
-            return {"success": False,
-                    "error": str(e),
-                    "answer": "something went wrong!!!"}
+            logger.error(f"failed to solve: {e}")
+            import traceback
+            traceback.print_exc()
+            return {
+                "success": False,
+                "error": str(e),
+                "answer": "Something went wrong!!!"
+            }
 
     async def solve_stream(
             self,
             question: str,
             chat_history: Optional[List[BaseMessage]] = None
     ) -> AsyncGenerator[str, None]:
-
         try:
-            chat_history = chat_history or []
             logger.info(f"Instructor Agent starts to solve: {question[:100]}...")
-
-            async for event in self.agent_executor.astream_events(
-                {
-                        "input": question,
-                        "chat_history": chat_history
-                    },
-                    version="v1"
-            ):
-                kind = event["event"]
-                if kind == "on_chat_model_stream":
-                    content = event["data"]["chunk"].content
-                    if content:
-                        yield content
-                elif kind == "on_tool_start":
-                    tool_name = event["name"]
-                    yield f"\n[useing tools] {tool_name}\n"
-
+            
+            # 构建完整提示词
+            prompt = self._build_prompt(question, chat_history)
+            
+            # 流式调用 LLM
+            async for chunk in self.llm.astream(prompt):
+                if chunk.content:
+                    yield chunk.content
 
             logger.info("finished")
         except Exception as e:
             logger.error(f"failed to stream: {e}")
+            import traceback
+            traceback.print_exc()
             yield "Something went wrong!!!"
 
 
