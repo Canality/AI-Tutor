@@ -5,7 +5,7 @@ import os
 from agent.prompt import VISION_ANALYSIS_PROMPT
 from utils.config import settings
 from utils.logger import logger
-from utils.volc_engine import volc_client
+from utils.siliconflow_vision import siliconflow_vision_client
 
 
 class ImageParser:
@@ -46,7 +46,7 @@ class ImageParser:
                 }
             ]
 
-            response = await volc_client.analyze_image(messages=messages)
+            response = await siliconflow_vision_client.analyze_image(messages=messages)
 
             if not response:
                 logger.error(f"Failed to parse image {image_path}")

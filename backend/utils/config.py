@@ -71,6 +71,11 @@ class Settings(BaseSettings):
     llm_model: str = os.getenv("LLM_MODEL", "gpt-3.5-turbo")
     temperature: float = float(os.getenv("TEMPERATURE", "0.7"))
 
+    # 硅基流动视觉模型
+    vision_model: str = os.getenv("VISION_MODEL", "")
+    embedding_model: str = os.getenv("EMBEDDING_MODEL", "")
+
+    # 豆包/火山引擎配置（备用）
     volc_access_key: str = os.getenv("VOLC_ACCESS_KEY", "")
     volc_secret_key: str = os.getenv("VOLC_SECRET_KEY", "")
     volc_region: str = os.getenv("VOLC_REGION", "cn-beijing")
