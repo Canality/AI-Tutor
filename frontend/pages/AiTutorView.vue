@@ -1,52 +1,68 @@
 <template>
-  <div class="ai-tutor-page">
-    <Navigation />
+  <div class="ai-tutor-page" :class="{ 'nav-collapsed': !navOpen }">
+    <Navigation @toggle="navOpen = $event" />
     
     <div class="tutor-container">
       <h1>🤖 AI 智能辅导</h1>
       <p class="subtitle">输入你的数学问题，AI 将为你提供详细解答</p>
       
-      <div class="chat-container">
-        <div class="messages" ref="messagesContainer">
-          <div v-for="(msg, index) in messages" :key="index" :class="['message', msg.type]">
-            <div class="avatar">{{ msg.type === 'user' ? '👤' : '🤖' }}</div>
-            <div class="content">
-              <div v-if="msg.type === 'ai' && msg.loading" class="loading-dots">
-                <span></span><span></span><span></span>
+      <!-- 可拖动调整大小的对话框 -->
+      <div 
+        class="chat-wrapper" 
+        ref="chatWrapper"
+        :style="{ height: chatHeight + 'px' }"
+      >
+        <div class="chat-container">
+          <div class="messages" ref="messagesContainer">
+            <div v-for="(msg, index) in messages" :key="index" :class="['message', msg.type]">
+              <div class="avatar">{{ msg.type === 'user' ? '👤' : '🤖' }}</div>
+              <div class="content">
+                <div v-if="msg.type === 'ai' && msg.loading" class="loading-dots">
+                  <span></span><span></span><span></span>
+                </div>
+                <div v-else class="message-text" v-html="msg.renderedContent || renderContent(msg.content)"></div>
               </div>
-              <div v-else class="message-text" v-html="msg.renderedContent || renderContent(msg.content)"></div>
+            </div>
+          </div>
+          
+          <!-- 图片预览 -->
+          <div v-if="selectedImage" class="image-preview">
+            <img :src="imagePreviewUrl" alt="预览" />
+            <button class="remove-image" @click="removeImage">×</button>
+          </div>
+          
+          <div class="input-area">
+            <textarea
+              v-model="question"
+              placeholder="请输入你的数学问题..."
+              @keydown.enter.prevent="sendQuestionHandler"
+              rows="3"
+            ></textarea>
+            <div class="actions">
+              <input
+                type="file"
+                ref="imageInput"
+                accept="image/*"
+                style="display: none"
+                @change="handleImageSelect"
+              />
+              <button class="upload-btn" @click="$refs.imageInput.click()" :disabled="loading">
+                📷 上传图片
+              </button>
+              <button @click="sendQuestionHandler" :disabled="loading || (!question.trim() && !selectedImage)">
+                {{ loading ? '思考中...' : '发送问题' }}
+              </button>
             </div>
           </div>
         </div>
         
-        <!-- 图片预览 -->
-        <div v-if="selectedImage" class="image-preview">
-          <img :src="imagePreviewUrl" alt="预览" />
-          <button class="remove-image" @click="removeImage">×</button>
-        </div>
-        
-        <div class="input-area">
-          <textarea
-            v-model="question"
-            placeholder="请输入你的数学问题..."
-            @keydown.enter.prevent="sendQuestionHandler"
-            rows="3"
-          ></textarea>
-          <div class="actions">
-            <input
-              type="file"
-              ref="imageInput"
-              accept="image/*"
-              style="display: none"
-              @change="handleImageSelect"
-            />
-            <button class="upload-btn" @click="$refs.imageInput.click()" :disabled="loading">
-              📷 上传图片
-            </button>
-            <button @click="sendQuestionHandler" :disabled="loading || (!question.trim() && !selectedImage)">
-              {{ loading ? '思考中...' : '发送问题' }}
-            </button>
-          </div>
+        <!-- 拖动调整大小的手柄 -->
+        <div 
+          class="resize-handle" 
+          @mousedown="startResize"
+          @touchstart="startResize"
+        >
+          <div class="resize-indicator"></div>
         </div>
       </div>
     </div>
@@ -67,13 +83,69 @@ export default {
       messages: [],
       loading: false,
       selectedImage: null,
-      imagePreviewUrl: null
+      imagePreviewUrl: null,
+      navOpen: true,
+      chatHeight: 500, // 默认高度
+      isResizing: false,
+      startY: 0,
+      startHeight: 0
     }
   },
   mounted() {
     this.loadMathJax()
+    // 从本地存储恢复高度设置
+    const savedHeight = localStorage.getItem('chatHeight')
+    if (savedHeight) {
+      this.chatHeight = parseInt(savedHeight)
+    }
+  },
+  beforeUnmount() {
+    this.stopResize()
   },
   methods: {
+    // 开始拖动调整大小
+    startResize(e) {
+      this.isResizing = true
+      this.startY = e.type.includes('touch') ? e.touches[0].clientY : e.clientY
+      this.startHeight = this.chatHeight
+      
+      document.addEventListener('mousemove', this.onResize)
+      document.addEventListener('mouseup', this.stopResize)
+      document.addEventListener('touchmove', this.onResize)
+      document.addEventListener('touchend', this.stopResize)
+      
+      document.body.style.cursor = 'ns-resize'
+      document.body.style.userSelect = 'none'
+    },
+    
+    // 拖动中
+    onResize(e) {
+      if (!this.isResizing) return
+      
+      const currentY = e.type.includes('touch') ? e.touches[0].clientY : e.clientY
+      const deltaY = this.startY - currentY
+      const newHeight = Math.max(300, Math.min(800, this.startHeight + deltaY))
+      
+      this.chatHeight = newHeight
+    },
+    
+    // 停止拖动
+    stopResize() {
+      if (this.isResizing) {
+        this.isResizing = false
+        // 保存高度到本地存储
+        localStorage.setItem('chatHeight', this.chatHeight.toString())
+      }
+      
+      document.removeEventListener('mousemove', this.onResize)
+      document.removeEventListener('mouseup', this.stopResize)
+      document.removeEventListener('touchmove', this.onResize)
+      document.removeEventListener('touchend', this.stopResize)
+      
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+    },
+    
     // 加载 MathJax
     loadMathJax() {
       if (window.MathJax) return
@@ -94,7 +166,7 @@ export default {
       document.head.appendChild(script)
     },
     
-    // 渲染内容（处理换行）
+    // 渲染内容
     renderContent(content) {
       if (!content) return ''
       return content.replace(/\n/g, '<br>')
@@ -143,7 +215,7 @@ export default {
       this.question = ''
       this.loading = true
       
-      // 添加 AI 消息（初始为空）
+      // 添加 AI 消息
       const aiMsgIndex = this.messages.length
       this.messages.push({ 
         type: 'ai', 
@@ -178,7 +250,6 @@ export default {
         const decoder = new TextDecoder()
         let fullContent = ''
         
-        // 关闭 loading，开始显示内容
         this.messages[aiMsgIndex].loading = false
         
         while (true) {
@@ -193,11 +264,9 @@ export default {
               const data = line.substring(6)
               if (data && data !== '[DONE]') {
                 fullContent += data
-                // 实时更新显示
                 this.messages[aiMsgIndex].content = fullContent
                 this.messages[aiMsgIndex].renderedContent = this.renderContent(fullContent)
                 this.scrollToBottom()
-                // 每接收一定内容触发 MathJax 渲染
                 if (fullContent.length % 50 === 0) {
                   this.renderMath()
                 }
@@ -206,7 +275,6 @@ export default {
           }
         }
         
-        // 最终渲染
         this.renderMath()
         
       } catch (error) {
@@ -237,12 +305,18 @@ export default {
 .ai-tutor-page {
   min-height: 100vh;
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  margin-left: 250px;
+  transition: margin-left 0.3s ease;
+}
+
+.ai-tutor-page.nav-collapsed {
+  margin-left: 0;
 }
 
 .tutor-container {
   max-width: 900px;
   margin: 0 auto;
-  padding: 20px;
+  padding: 80px 20px 20px;
 }
 
 h1 {
@@ -257,15 +331,26 @@ h1 {
   margin-bottom: 30px;
 }
 
-.chat-container {
+/* 可调整大小的对话框容器 */
+.chat-wrapper {
+  position: relative;
   background: white;
   border-radius: 16px;
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.chat-container {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 .messages {
-  height: 400px;
+  flex: 1;
   overflow-y: auto;
   padding: 20px;
   background: #f8f9fa;
@@ -316,7 +401,6 @@ h1 {
   word-wrap: break-word;
 }
 
-/* MathJax 公式样式 */
 .message-text :deep(.MathJax) {
   font-size: 1.1em;
 }
@@ -435,5 +519,48 @@ h1 {
 .actions button:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+}
+
+/* 拖动调整大小的手柄 */
+.resize-handle {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 20px;
+  background: transparent;
+  cursor: ns-resize;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+}
+
+.resize-handle:hover .resize-indicator,
+.resize-handle:active .resize-indicator {
+  background: #667eea;
+}
+
+.resize-indicator {
+  width: 60px;
+  height: 4px;
+  background: #ccc;
+  border-radius: 2px;
+  transition: background 0.2s;
+}
+
+/* 响应式 */
+@media (max-width: 768px) {
+  .ai-tutor-page {
+    margin-left: 0;
+  }
+  
+  .tutor-container {
+    padding: 70px 10px 10px;
+  }
+  
+  .content {
+    max-width: 85%;
+  }
 }
 </style>
