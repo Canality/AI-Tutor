@@ -363,7 +363,7 @@
 
 <script setup>
 // ========== 第1步：导入API（新增）==========
-import { sendQuestion } from '../api/tutor.js'
+import { sendQuestion } from '/api/tutor.js'
 
 import { ref, reactive, nextTick, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
