@@ -1,29 +1,15 @@
 from typing import List, Dict, Any, Optional, AsyncGenerator
-from langchain.agents import AgentExecutor, create_openai_tools_agent
-from langchain_core.messages import BaseMessage, HumanMessage, AIMessage
 from langchain_openai import ChatOpenAI
-from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
-from agent.tools import get_tools
+from langchain_core.messages import BaseMessage, HumanMessage, AIMessage
 from utils.config import settings
 from utils.logger import logger
+from rag.retriever import KnowledgeRetriever
 
 
-# 系统提示词 - 结合昨天的改进
+# 系统提示词
 SYSTEM_PROMPT = """你是一位经验丰富的高中数学数列辅导老师，擅长"苏格拉底式教学法"。
 
 你的目标不是直接给出答案，而是通过提问和引导，帮助学生自己推导出答案。
-
-## 可用工具
-
-你有以下工具可以帮助教学：
-
-1. **search_knowledge**: 搜索数列相关的知识点
-   - 当需要讲解概念、公式或定理时使用
-   - 输入：搜索关键词
-
-2. **search_examples**: 搜索类似的数列例题
-   - 当需要举例说明或提供参考题目时使用
-   - 输入：搜索关键词
 
 ## 回答格式
 
@@ -41,6 +27,8 @@ SYSTEM_PROMPT = """你是一位经验丰富的高中数学数列辅导老师，�
 3. 公式中的下标使用 _ 符号，如 $a_1$, $a_n$
 4. 每个计算步骤单独成行
 5. 不同的计算步骤之间必须换行
+6. 普通文本中的数列符号直接写 b_n，不要加反斜杠转义
+7. 只有在 $...$ 公式块内才使用 LaTeX 语法
 
 ### ❓ 轮到你了
 （向用户提出的具体问题，引导下一步思考）
@@ -51,38 +39,14 @@ SYSTEM_PROMPT = """你是一位经验丰富的高中数学数列辅导老师，�
 2. **鼓励探索**：解释完后必须提出引导性问题，让学生自己思考
 3. **错误诊断**：如果学生回答错误，指出具体错误点并给出小提示
 4. **完整性**：每个步骤的解答必须完整，不要中途截断
-5. **善用工具**：当需要查找知识点或例题时，主动使用搜索工具
+5. **善用知识**：当需要讲解知识点时，主动调用知识库搜索
 """
 
 
 class InstructorAgent:
     def __init__(self):
-        self.tools = get_tools()
         self.llm = self._init_llm()
-        
-        # 创建Agent提示词模板
-        prompt = ChatPromptTemplate.from_messages([
-            ("system", SYSTEM_PROMPT),
-            MessagesPlaceholder(variable_name="chat_history"),
-            ("human", "{input}"),
-            MessagesPlaceholder(variable_name="agent_scratchpad"),
-        ])
-        
-        self.agent = create_openai_tools_agent(
-            llm=self.llm,
-            tools=self.tools,
-            prompt=prompt,
-        )
-        self.agent_executor = AgentExecutor(
-            agent=self.agent,
-            tools=self.tools,
-            verbose=settings.verbose,
-            handle_parsing_errors=True,
-            max_iterations=12,
-            max_execution_time=360,
-            early_stopping_method="generate",
-            return_intermediate_steps=False
-        )
+        self.retriever = KnowledgeRetriever()
 
     def _init_llm(self):
         if settings.openai_api_key:
@@ -99,31 +63,73 @@ class InstructorAgent:
             logger.error("invalid openai api key")
             raise ValueError("invalid openai api key")
 
+    def _search_knowledge(self, query: str) -> str:
+        """搜索相关知识并格式化"""
+        try:
+            results = self.retriever.search_knowledge(query, top_k=3)
+            if not results:
+                return ""
+            
+            knowledge_text = "\n\n相关知识点：\n"
+            for i, result in enumerate(results, 1):
+                knowledge_text += f"{i}. {result.get('content', '')}\n"
+            return knowledge_text
+        except Exception as e:
+            logger.error(f"搜索知识失败: {e}")
+            return ""
+
+    def _build_prompt(self, question: str, chat_history: Optional[List[BaseMessage]] = None) -> str:
+        """构建完整的提示词"""
+        # 搜索相关知识
+        knowledge = self._search_knowledge(question)
+        
+        # 构建历史消息文本
+        history_text = ""
+        if chat_history:
+            history_parts = []
+            for msg in chat_history[-6:]:
+                if isinstance(msg, HumanMessage):
+                    history_parts.append(f"学生：{msg.content}")
+                elif isinstance(msg, AIMessage):
+                    history_parts.append(f"老师：{msg.content}")
+            if history_parts:
+                history_text = "\n\n".join(history_parts) + "\n\n"
+        
+        # 组合完整提示词
+        full_prompt = f"""{SYSTEM_PROMPT}
+
+{knowledge}
+
+{history_text}学生问题：{question}
+
+老师回答："""
+        return full_prompt
+
     async def solve(
             self,
             question: str,
             chat_history: Optional[List[BaseMessage]] = None,
     ) -> Dict[str, Any]:
         try:
-            chat_history = chat_history or []
             logger.info(f"start solving {question[:100]}")
             
-            result = await self.agent_executor.ainvoke(
-                {
-                    "input": question,
-                    "chat_history": chat_history
-                }
-            )
+            # 构建完整提示词
+            prompt = self._build_prompt(question, chat_history)
+            
+            # 调用 LLM
+            result = await self.llm.ainvoke(prompt)
+            answer = result.content
             
             logger.info(f"end solving {question[:100]}")
-            new_chat_history = chat_history + [
+            
+            new_chat_history = (chat_history or []) + [
                 HumanMessage(content=question),
-                AIMessage(content=result["output"])
+                AIMessage(content=answer)
             ]
 
             return {
                 "success": True,
-                "answer": result["output"],
+                "answer": answer,
                 "chat_history": new_chat_history
             }
         except Exception as e:
@@ -142,24 +148,15 @@ class InstructorAgent:
             chat_history: Optional[List[BaseMessage]] = None
     ) -> AsyncGenerator[str, None]:
         try:
-            chat_history = chat_history or []
             logger.info(f"Instructor Agent starts to solve: {question[:100]}...")
-
-            async for event in self.agent_executor.astream_events(
-                {
-                    "input": question,
-                    "chat_history": chat_history
-                },
-                version="v1"
-            ):
-                kind = event["event"]
-                if kind == "on_chat_model_stream":
-                    content = event["data"]["chunk"].content
-                    if content:
-                        yield content
-                elif kind == "on_tool_start":
-                    tool_name = event["name"]
-                    yield f"\n[正在使用工具] {tool_name}\n"
+            
+            # 构建完整提示词
+            prompt = self._build_prompt(question, chat_history)
+            
+            # 流式调用 LLM
+            async for chunk in self.llm.astream(prompt):
+                if chunk.content:
+                    yield chunk.content
 
             logger.info("finished")
         except Exception as e:

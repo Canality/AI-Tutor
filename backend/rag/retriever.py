@@ -6,9 +6,39 @@ from typing import Any, Dict, List, Optional, Sequence
 
 
 import chromadb
+from openai import OpenAI
 
 from utils.config import settings
 from utils.logger import logger
+
+
+class SiliconFlowEmbeddingFunction:
+    """硅基流动 Embedding 适配器"""
+
+    def __init__(self, model: Optional[str] = None) -> None:
+        self.model = model or settings.embedding_model or "BAAI/bge-large-zh-v1.5"
+        self.client = OpenAI(
+            api_key=settings.openai_api_key,
+            base_url=settings.openai_api_base
+        )
+
+    def __call__(self, input: Sequence[str]) -> List[List[float]]:
+        """ChromaDB 会以字符串列表形式调用该函数。"""
+        clean_texts = [str(t).strip() for t in input if str(t).strip()]
+        if not clean_texts:
+            logger.warning("Embedding 输入为空，返回空向量")
+            return []
+
+        try:
+            response = self.client.embeddings.create(
+                model=self.model,
+                input=clean_texts
+            )
+            vectors = [item.embedding for item in response.data]
+            return vectors
+        except Exception as e:
+            logger.error(f"Embedding 调用失败: {e}")
+            raise
 
 
 class VolcEmbeddingFunction:
@@ -186,7 +216,11 @@ class KnowledgeRetriever:
 
     def __init__(self):
         self.client = chromadb.PersistentClient(path=settings.chroma_persist_dir)
-        self.embedding_function = VolcEmbeddingFunction()
+        # 使用硅基流动嵌入（如果配置了API Key），否则使用火山引擎
+        if settings.openai_api_key and settings.embedding_model:
+            self.embedding_function = SiliconFlowEmbeddingFunction()
+        else:
+            self.embedding_function = VolcEmbeddingFunction()
 
         self.knowledge_collection = self.client.get_or_create_collection(
             name="knowledge_points",
