@@ -1,4 +1,4 @@
-import './assets/main.css'
+import './assets/base.css'
 import { createApp } from 'vue'
 import App from './App.vue'
 import router from './router'  // 导入路由配置

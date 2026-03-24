@@ -1,8 +1,8 @@
 import axios from 'axios'
 
-// 使用完整地址，不走代理
+// 使用相对路径，通过 Vite 代理转发到后端
 const apiClient = axios.create({
-  baseURL: 'http://localhost:8000',
+  baseURL: '/api',
   timeout: 120000,
   headers: {
     'Content-Type': 'application/json'
@@ -64,7 +64,7 @@ export const sendQuestion = async (question, imageBase64 = null, onChunk = null)
   }
 
   // ✅ 关键：不要设置 Content-Type，让浏览器自动处理 multipart/form-data
-  const response = await fetch('http://localhost:8000/api/chat/ask-stream', {
+  const response = await fetch('/api/chat/ask-stream', {
     method: 'POST',
     headers: { 
       'Authorization': `Bearer ${token}`

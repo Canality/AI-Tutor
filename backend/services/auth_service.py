@@ -4,7 +4,7 @@ from typing import Optional
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
-from passlib.context import CryptContext
+import bcrypt
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -14,41 +14,31 @@ from schemas.auth import RegisterRequest
 from utils.config import settings
 from utils.logger import logger
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    """验证密码（同步截断+详细日志）"""
-    # 新增日志：打印验证时的原始密码
+    """验证密码"""
     logger.info(
-        f"[密码验证] 原始密码: {repr(plain_password)}, 字符数: {len(plain_password)}, 字节数: {len(plain_password.encode('utf-8'))}")
-
-    # 截断逻辑（和哈希时保持一致）
-    plain_password_truncated = plain_password.encode("utf-8")[:72].decode("utf-8", errors="ignore")
-    logger.info(f"[密码验证] 截断后密码: {repr(plain_password_truncated)}")
-
-    result = pwd_context.verify(plain_password_truncated, hashed_password)
+        f"[密码验证] 原始密码: {repr(plain_password)}, 字节数: {len(plain_password.encode('utf-8'))}")
+    
+    # bcrypt 检查
+    plain_bytes = plain_password.encode('utf-8')
+    hashed_bytes = hashed_password.encode('utf-8')
+    result = bcrypt.checkpw(plain_bytes, hashed_bytes)
     logger.info(f"[密码验证] 验证结果: {'成功' if result else '失败'}")
     return result
 
 
 def get_password_hash(password: str) -> str:
-    """生成密码哈希（截断+详细日志）"""
-    # 关键日志1：打印原始密码的所有细节（repr能显示隐藏字符）
-    logger.info(f"[密码哈希] 收到的原始密码: {repr(password)}")
-    logger.info(f"[密码哈希] 原始密码字符数: {len(password)}")
-    logger.info(f"[密码哈希] 原始密码字节数: {len(password.encode('utf-8'))}")
-
-    # 关键修复：截断密码到72字节（bcrypt最大支持长度）
-    password_truncated = password.encode("utf-8")[:72].decode("utf-8", errors="ignore")
-
-    # 关键日志2：打印截断后的密码
-    logger.info(f"[密码哈希] 截断后密码: {repr(password_truncated)}")
-    logger.info(f"[密码哈希] 截断后字节数: {len(password_truncated.encode('utf-8'))}")
-
-    # 生成哈希
-    password_hash = pwd_context.hash(password_truncated)
+    """生成密码哈希"""
+    logger.info(f"[密码哈希] 收到的原始密码: {repr(password)}, 字节数: {len(password.encode('utf-8'))}")
+    
+    # bcrypt 自动生成 salt 并哈希
+    password_bytes = password.encode('utf-8')
+    # bcrypt 会自动处理超过72字节的情况
+    hashed = bcrypt.hashpw(password_bytes, bcrypt.gensalt(rounds=12))
+    password_hash = hashed.decode('utf-8')
     logger.info(f"[密码哈希] 生成的哈希值: {password_hash}")
     return password_hash
 
@@ -71,11 +61,7 @@ async def get_user_by_username(db: AsyncSession, username: str) -> Optional[User
 
 
 async def register_user(db: AsyncSession, payload: RegisterRequest) -> User:
-    # 关键日志1：打印注册接口收到的完整payload
-    logger.info(f"[注册用户] 收到注册请求，完整payload: {payload.dict()}")
-    logger.info(f"[注册用户] 收到的用户名: {payload.username}")
-    logger.info(f"[注册用户] 收到的密码（repr）: {repr(payload.password)}")
-    logger.info(f"[注册用户] 收到的密码字节数: {len(payload.password.encode('utf-8'))}")
+    logger.info(f"[注册用户] 收到注册请求，用户名: {payload.username}")
 
     existing_user = await get_user_by_username(db, payload.username)
     if existing_user:
@@ -86,7 +72,7 @@ async def register_user(db: AsyncSession, payload: RegisterRequest) -> User:
         )
 
     password_hash = get_password_hash(payload.password)
-    logger.info(f"[注册用户] 最终存储的密码哈希: {password_hash}")
+    logger.info(f"[注册用户] 密码哈希生成成功")
 
     user = User(
         username=payload.username,
@@ -103,7 +89,7 @@ async def register_user(db: AsyncSession, payload: RegisterRequest) -> User:
 async def authenticate_user(
         db: AsyncSession, username: str, password: str
 ) -> Optional[User]:
-    logger.info(f"[用户认证] 收到认证请求，用户名: {username}, 密码: {repr(password)}")
+    logger.info(f"[用户认证] 收到认证请求，用户名: {username}")
     user = await get_user_by_username(db, username)
     if not user:
         logger.warning(f"[用户认证] 用户不存在: {username}")

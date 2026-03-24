@@ -1,8 +1,9 @@
-from typing import Optional
+from typing import Optional, List
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Depends
 from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from langchain_core.messages import HumanMessage, AIMessage
 import os
 import uuid
 
@@ -98,9 +99,46 @@ async def ask_stream(
             f"question saved, user_id={current_user.id}, message_id={chat_message.id}, question_id={question_record.id}"
         )
 
+        # 获取历史消息作为上下文
+        history_stmt = (
+            select(ChatMessage)
+            .where(ChatMessage.session_id == chat_session.id)
+            .order_by(ChatMessage.created_at.desc())
+            .limit(10)  # 获取最近10条消息
+        )
+        history_result = await db.execute(history_stmt)
+        history_messages = history_result.scalars().all()
+        
+        # 转换为 LangChain 消息格式（排除当前这条用户消息）
+        chat_history: List = []
+        for msg in reversed(history_messages):  # 反转回正序
+            if msg.id == chat_message.id:  # 跳过刚添加的当前消息
+                continue
+            if msg.role == RoleType.USER:
+                chat_history.append(HumanMessage(content=msg.content))
+            elif msg.role == RoleType.AI:
+                chat_history.append(AIMessage(content=msg.content))
+        
+        logger.info(f"Loaded {len(chat_history)} history messages for context")
+
         async def generate():
-            async for chunk in tutor_service.process_question_stream(question, image_path):
+            full_response = ""
+            async for chunk in tutor_service.process_question_stream(question, image_path, chat_history):
+                full_response += chunk
                 yield f"data: {chunk}\n\n"
+            
+            # 保存 AI 回复到数据库
+            ai_message = ChatMessage(
+                session_id=chat_session.id,
+                user_id=current_user.id,
+                role=RoleType.AI,
+                content=full_response,
+                message_type=MessageType.TEXT,
+            )
+            db.add(ai_message)
+            chat_session.total_messages += 1
+            await db.commit()
+            logger.info(f"AI response saved, session_id={chat_session.id}")
 
         return StreamingResponse(
             generate(),
