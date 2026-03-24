@@ -116,7 +116,7 @@ async def ask_stream(
                 continue
             if msg.role == RoleType.USER:
                 chat_history.append(HumanMessage(content=msg.content))
-            elif msg.role == RoleType.AI:
+            elif msg.role == RoleType.ASSISTANT:
                 chat_history.append(AIMessage(content=msg.content))
         
         logger.info(f"Loaded {len(chat_history)} history messages for context")
@@ -131,7 +131,7 @@ async def ask_stream(
             ai_message = ChatMessage(
                 session_id=chat_session.id,
                 user_id=current_user.id,
-                role=RoleType.AI,
+                role=RoleType.ASSISTANT,
                 content=full_response,
                 message_type=MessageType.TEXT,
             )

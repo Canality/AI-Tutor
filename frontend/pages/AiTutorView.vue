@@ -182,7 +182,7 @@
                       <span>正在思考...</span>
                     </div>
                   </div>
-                  <div class="message-body" v-else>{{ msg.content }}</div>
+                  <div class="message-body markdown-body" v-else v-html="renderContent(msg.content)"></div>
                 </div>
               </div>
             </div>
@@ -363,12 +363,69 @@
 
 <script setup>
 // ========== 第1步：导入API（新增）==========
-import { sendQuestion } from '../api/tutor.js'
+import { sendQuestion } from '../services/tutor-api.js'
 
 import { ref, reactive, nextTick, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
+import { marked } from 'marked'
+import katex from 'katex'
 
 const router = useRouter()
+
+// ==================== Markdown + LaTeX 渲染 ====================
+/**
+ * 渲染 Markdown 和 LaTeX 公式
+ * 先处理 LaTeX，再处理 Markdown
+ */
+const renderContent = (text) => {
+  if (!text) return ''
+  
+  // 步骤1：保护代码块中的内容（暂不处理）
+  const codeBlocks = []
+  text = text.replace(/```[\s\S]*?```/g, (match) => {
+    codeBlocks.push(match)
+    return `\x00CODE${codeBlocks.length - 1}\x00`
+  })
+  
+  // 步骤2：处理块级公式 $$...$$
+  text = text.replace(/\$\$([\s\S]*?)\$\$/g, (match, formula) => {
+    try {
+      const html = katex.renderToString(formula.trim(), {
+        throwOnError: false,
+        displayMode: true
+      })
+      return `\x00MATH${html}\x00`
+    } catch (e) {
+      return `<div class="latex-error">${formula}</div>`
+    }
+  })
+  
+  // 步骤3：处理行内公式 $...$
+  text = text.replace(/\$([^\$\n]+?)\$/g, (match, formula) => {
+    try {
+      const html = katex.renderToString(formula.trim(), {
+        throwOnError: false,
+        displayMode: false
+      })
+      return `\x00MATH${html}\x00`
+    } catch (e) {
+      return `<span class="latex-error">${formula}</span>`
+    }
+  })
+  
+  // 步骤4：处理 Markdown
+  text = marked.parse(text, { breaks: true })
+  
+  // 步骤5：恢复保护的数学公式
+  text = text.replace(/\x00MATH(.*?)\x00/g, '$1')
+  
+  // 步骤6：恢复代码块
+  text = text.replace(/\x00CODE(\d+)\x00/g, (match, index) => {
+    return codeBlocks[parseInt(index)]
+  })
+  
+  return text
+}
 
 // ==================== 侧边栏状态 ====================
 const isSidebarCollapsed = ref(false)
@@ -1803,5 +1860,78 @@ textarea::placeholder { color: #999; }
   .memory-panel { width: 280px; }
   .chat-container { padding: 20px 10px; }
   .input-wrapper { padding: 12px 10px; }
+}
+
+/* ==================== Markdown + LaTeX 样式 ==================== */
+.markdown-body {
+  line-height: 1.8;
+  color: #333;
+}
+
+.markdown-body h3 {
+  font-size: 16px;
+  font-weight: 600;
+  color: #1d1d1f;
+  margin: 20px 0 12px 0;
+  padding-bottom: 8px;
+  border-bottom: 2px solid #667eea;
+}
+
+.markdown-body p {
+  margin: 12px 0;
+}
+
+.markdown-body ul, .markdown-body ol {
+  margin: 12px 0;
+  padding-left: 24px;
+}
+
+.markdown-body li {
+  margin: 6px 0;
+}
+
+.markdown-body code {
+  background-color: #f4f4f5;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-family: 'Courier New', monospace;
+  font-size: 0.9em;
+}
+
+.markdown-body pre {
+  background-color: #f4f4f5;
+  padding: 16px;
+  border-radius: 8px;
+  overflow-x: auto;
+  margin: 12px 0;
+}
+
+.markdown-body pre code {
+  background: none;
+  padding: 0;
+}
+
+.markdown-body blockquote {
+  border-left: 4px solid #667eea;
+  padding-left: 16px;
+  margin: 12px 0;
+  color: #666;
+}
+
+.markdown-body .katex-display {
+  margin: 16px 0;
+  overflow-x: auto;
+}
+
+.markdown-body .katex {
+  font-size: 1.1em;
+}
+
+.markdown-body .latex-error {
+  color: #e74c3c;
+  background-color: #fdf2f2;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-family: monospace;
 }
 </style>
