@@ -3,6 +3,15 @@ RAG系统API接口
 提供检索和RAG Pipeline的HTTP接口
 """
 
+import sys
+import os
+
+# 添加backend目录到路径，确保可以导入rag模块
+CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+BACKEND_DIR = os.path.dirname(CURRENT_DIR)
+if BACKEND_DIR not in sys.path:
+    sys.path.insert(0, BACKEND_DIR)
+
 from typing import List, Dict, Any, Optional
 from pydantic import BaseModel, Field
 from fastapi import APIRouter, HTTPException
