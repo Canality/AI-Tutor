@@ -46,8 +46,13 @@ logs/
 *.sqlite3
 *.db
 
-# ChromaDB (保留但忽略新创建的)
-# storage/chroma/*/  # 注释掉，因为用户说可能有用
+# ChromaDB - 向量数据库文件（自动生成，不提交）
+storage/chroma/*/
+storage/chroma/*.sqlite3
+backend/storage/chroma/*/
+backend/storage/chroma/*.sqlite3
+backend/rag/storage/chroma/*/
+backend/rag/storage/chroma/*.sqlite3
 
 # Node.js
 node_modules/
