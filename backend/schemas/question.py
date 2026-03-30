@@ -6,8 +6,9 @@
 - CustomQuestionPayload: API 层接收的用户上传题目数据
 """
 
+from datetime import datetime
 from typing import List, Optional, Literal
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class CustomQuestionData(BaseModel):
@@ -223,3 +224,124 @@ class QuestionResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class QuestionBase(BaseModel):
+    content: str = Field(
+        ...,
+        min_length=1,
+        max_length=10000,
+        description="题目内容文本"
+    )
+    standard_answer: Optional[str] = Field(
+        None,
+        max_length=5000,
+        description="标准答案"
+    )
+    difficulty: int = Field(
+        default=2,
+        ge=1,
+        le=5,
+        description="难度等级"
+    )
+    question_type: Literal[
+        "single_choice",
+        "multiple_choice",
+        "fill_blank",
+        "short_answer",
+        "essay",
+        "calculation",
+        "other",
+        "text",
+        "image",
+    ] = Field(
+        default="short_answer",
+        description="题目类型"
+    )
+    knowledge_points: List[str] = Field(
+        default_factory=list,
+        max_length=20,
+        description="知识点列表"
+    )
+
+    @field_validator("content")
+    @classmethod
+    def strip_content(cls, v: str) -> str:
+        return v.strip()
+
+    @field_validator("knowledge_points")
+    @classmethod
+    def normalize_knowledge_points(cls, v: List[str]) -> List[str]:
+        if v is None:
+            return []
+        return list(dict.fromkeys([kp.strip() for kp in v if kp and kp.strip()]))[:20]
+
+
+class QuestionCreate(QuestionBase):
+    pass
+
+
+class QuestionUpdate(BaseModel):
+    content: Optional[str] = Field(
+        None,
+        min_length=1,
+        max_length=10000,
+        description="题目内容文本"
+    )
+    standard_answer: Optional[str] = Field(
+        None,
+        max_length=5000,
+        description="标准答案"
+    )
+    difficulty: Optional[int] = Field(
+        None,
+        ge=1,
+        le=5,
+        description="难度等级"
+    )
+    question_type: Optional[Literal[
+        "single_choice",
+        "multiple_choice",
+        "fill_blank",
+        "short_answer",
+        "essay",
+        "calculation",
+        "other",
+        "text",
+        "image",
+    ]] = Field(
+        None,
+        description="题目类型"
+    )
+    knowledge_points: Optional[List[str]] = Field(
+        None,
+        max_length=20,
+        description="知识点列表"
+    )
+
+    @field_validator("content")
+    @classmethod
+    def strip_optional_content(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return v
+        return v.strip()
+
+    @field_validator("knowledge_points")
+    @classmethod
+    def normalize_optional_knowledge_points(cls, v: Optional[List[str]]) -> Optional[List[str]]:
+        if v is None:
+            return None
+        return list(dict.fromkeys([kp.strip() for kp in v if kp and kp.strip()]))[:20]
+
+
+class QuestionDetailResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    user_id: int
+    content: str
+    standard_answer: Optional[str]
+    difficulty: int
+    question_type: Optional[str]
+    knowledge_points: List[str] = Field(default_factory=list)
+    created_at: Optional[datetime]

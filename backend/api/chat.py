@@ -77,21 +77,12 @@ async def ask_stream(
         db.add(chat_message)
         chat_session.total_messages = (chat_session.total_messages or 0) + 1
 
-        # questions.user_id 当前是 unique=True，这里采用“按用户更新/不存在则创建”
-        question_stmt = select(Question).where(Question.user_id == current_user.id)
-        question_result = await db.execute(question_stmt)
-        question_record = question_result.scalars().first()
-
-        if question_record is None:
-            question_record = Question(
-                user_id=current_user.id,
-                content=question,
-                question_type="image" if image_path else "text",
-            )
-            db.add(question_record)
-        else:
-            question_record.content = question
-            question_record.question_type = "image" if image_path else "text"
+        question_record = Question(
+            user_id=current_user.id,
+            content=question,
+            question_type="image" if image_path else "text",
+        )
+        db.add(question_record)
 
         await db.commit()
 
