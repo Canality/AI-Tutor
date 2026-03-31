@@ -2,7 +2,10 @@ from schemas.auth import LoginRequest, RegisterRequest, TokenResponse, UserRespo
 from schemas.question import (
     CustomQuestionData,
     CustomQuestionPayload,
-    QuestionResponse
+    QuestionResponse,
+    QuestionCreate,
+    QuestionUpdate,
+    QuestionDetailResponse,
 )
 
 __all__ = [
@@ -15,4 +18,7 @@ __all__ = [
     "CustomQuestionData",
     "CustomQuestionPayload",
     "QuestionResponse",
+    "QuestionCreate",
+    "QuestionUpdate",
+    "QuestionDetailResponse",
 ]
