@@ -12,14 +12,14 @@ from utils.config import settings
 from utils.logger import logger
 
 
-class SiliconFlowEmbeddingFunction:
-    """硅基流动 Embedding 适配器"""
+class ChaoSuanEmbeddingFunction:
+    """超算互联网 Qwen3-Embedding 适配器"""
 
     def __init__(self, model: Optional[str] = None) -> None:
-        self.model = model or settings.embedding_model or "BAAI/bge-large-zh-v1.5"
+        self.model = model or settings.chaosuan_embedding_model or "Qwen3-Embedding-8B"
         self.client = OpenAI(
-            api_key=settings.openai_api_key,
-            base_url=settings.openai_api_base
+            api_key=settings.chaosuan_api_key,
+            base_url=settings.chaosuan_api_base
         )
 
     def __call__(self, input: Sequence[str]) -> List[List[float]]:
@@ -37,7 +37,7 @@ class SiliconFlowEmbeddingFunction:
             vectors = [item.embedding for item in response.data]
             return vectors
         except Exception as e:
-            logger.error(f"Embedding 调用失败: {e}")
+            logger.error(f"超算互联网 Embedding 调用失败: {e}")
             raise
 
 
@@ -216,8 +216,10 @@ class KnowledgeRetriever:
 
     def __init__(self):
         self.client = chromadb.PersistentClient(path=settings.chroma_persist_dir)
-        # 使用硅基流动嵌入（如果配置了API Key），否则使用火山引擎
-        if settings.openai_api_key and settings.embedding_model:
+        # 优先使用超算互联网Embedding（比赛限定模型），其次硅基流动，最后火山引擎
+        if settings.chaosuan_api_key and settings.chaosuan_embedding_model:
+            self.embedding_function = ChaoSuanEmbeddingFunction()
+        elif settings.openai_api_key and settings.embedding_model:
             self.embedding_function = SiliconFlowEmbeddingFunction()
         else:
             self.embedding_function = VolcEmbeddingFunction()

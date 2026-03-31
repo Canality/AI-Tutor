@@ -75,6 +75,11 @@ class Settings(BaseSettings):
     vision_model: str = os.getenv("VISION_MODEL", "")
     embedding_model: str = os.getenv("EMBEDDING_MODEL", "")
 
+    # 超算互联网配置（比赛限定模型 - Qwen3-Embedding-8B）
+    chaosuan_api_key: str = os.getenv("CHAOSUAN_API_KEY", "")
+    chaosuan_api_base: str = os.getenv("CHAOSUAN_API_BASE", "https://api.scnet.cn/v1")
+    chaosuan_embedding_model: str = os.getenv("CHAOSUAN_EMBEDDING_MODEL", "Qwen3-Embedding-8B")
+
     # 豆包/火山引擎配置（备用）
     volc_access_key: str = os.getenv("VOLC_ACCESS_KEY", "")
     volc_secret_key: str = os.getenv("VOLC_SECRET_KEY", "")
