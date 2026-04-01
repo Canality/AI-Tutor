@@ -6,6 +6,8 @@
 #
 aiofiles==25.1.0
     # via -r requirements.in
+aiohttp==3.11.16
+    # via -r requirements.in
 aiomysql==0.3.2
     # via -r requirements.in
 aioredis==2.0.1
