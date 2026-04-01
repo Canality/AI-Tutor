@@ -51,14 +51,16 @@ class InstructorAgent:
 
     def _init_llm(self):
         if settings.openai_api_key:
-            logger.info("initializing openai client")
+            logger.info(f"initializing openai client with model: {settings.llm_model}")
             return ChatOpenAI(
                 model=settings.llm_model,
                 temperature=settings.temperature,
                 api_key=settings.openai_api_key,
                 base_url=settings.openai_api_base,
                 streaming=True,
-                max_tokens=settings.llm_max_tokens
+                max_tokens=settings.llm_max_tokens,
+                timeout=60,  # 设置60秒超时
+                max_retries=2  # 最多重试2次
             )
         else:
             logger.error("invalid openai api key")

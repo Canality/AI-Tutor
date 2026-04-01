@@ -70,7 +70,7 @@ class Settings(BaseSettings):
     openai_api_base: str = os.getenv("OPENAI_API_BASE", "https://api.openai.com/v1")
     llm_model: str = os.getenv("LLM_MODEL", "gpt-3.5-turbo")
     temperature: float = float(os.getenv("TEMPERATURE", "0.7"))
-    llm_max_tokens: int = int(os.getenv("LLM_MAX_TOKENS", "819200"))
+    llm_max_tokens: int = int(os.getenv("LLM_MAX_TOKENS", "4096"))
 
 
     # 硅基流动视觉模型
@@ -81,6 +81,11 @@ class Settings(BaseSettings):
     chaosuan_api_key: str = os.getenv("CHAOSUAN_API_KEY", "")
     chaosuan_api_base: str = os.getenv("CHAOSUAN_API_BASE", "https://api.scnet.cn/v1")
     chaosuan_embedding_model: str = os.getenv("CHAOSUAN_EMBEDDING_MODEL", "Qwen3-Embedding-8B")
+
+    # DashScope（通义千问官方）配置
+    dashscope_api_key: str = os.getenv("DASHSCOPE_API_KEY", "")
+    dashscope_api_base: str = os.getenv("DASHSCOPE_API_BASE", "https://dashscope.aliyuncs.com/api/v1")
+    dashscope_embedding_model: str = os.getenv("DASHSCOPE_EMBEDDING_MODEL", "text-embedding-v3")
 
     # 豆包/火山引擎配置（备用）
     volc_access_key: str = os.getenv("VOLC_ACCESS_KEY", "")

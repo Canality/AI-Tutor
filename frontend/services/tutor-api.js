@@ -52,80 +52,110 @@ export const sendQuestion = async (question, imageBase64 = null, onChunk = null)
   
   // 创建 FormData（用于文件上传）
   const formData = new FormData()
-  formData.append('question', question || '')
+  
+  // 确保 question 是字符串且不为空
+  const safeQuestion = (question || '').toString().trim()
+  if (!safeQuestion && !imageBase64) {
+    return { answer: '请输入问题或上传图片' }
+  }
+  
+  formData.append('question', safeQuestion || ' ')
+  
+  console.log('发送请求:', { question: safeQuestion, hasImage: !!imageBase64 })
   
   if (imageBase64) {
-    const arr = imageBase64.split(',')
-    const mime = arr[0].match(/:(.*?);/)[1]
-    const bstr = atob(arr[1])
-    const u8arr = new Uint8Array(bstr.length)
-    for (let i = 0; i < bstr.length; i++) u8arr[i] = bstr.charCodeAt(i)
-    formData.append('image', new File([u8arr], 'upload.png', { type: mime }))
-  }
-
-  // ✅ 关键：不要设置 Content-Type，让浏览器自动处理 multipart/form-data
-  const response = await fetch('/api/chat/ask-stream', {
-    method: 'POST',
-    headers: { 
-      'Authorization': `Bearer ${token}`
-      // 注意：不要加 'Content-Type': 'multipart/form-data'
-      // 浏览器会自动设置，并加上 boundary
-    },
-    body: formData
-  })
-
-  if (!response.ok) {
-    console.error('请求失败:', response.status)
-    return { answer: `请求失败: ${response.status}` }
-  }
-
-  const reader = response.body.getReader()
-  const decoder = new TextDecoder('utf-8')
-  let fullText = ''
-  let buffer = ''
-
-  const processEvent = (eventText) => {
-    if (!eventText) return false
-
-    const dataLines = eventText
-      .split('\n')
-      .filter((line) => line.startsWith('data:'))
-      .map((line) => line.replace(/^data:\s?/, ''))
-
-    if (dataLines.length === 0) return false
-
-    const text = dataLines.join('\n')
-    if (text === '[DONE]') return true
-
-    fullText += text
-    if (onChunk) onChunk(text, fullText)
-    return false
-  }
-
-  while (true) {
-    const { done, value } = await reader.read()
-    if (done) break
-
-    buffer += decoder.decode(value, { stream: true })
-
-    let boundaryIndex = buffer.indexOf('\n\n')
-    while (boundaryIndex !== -1) {
-      const eventText = buffer.slice(0, boundaryIndex)
-      buffer = buffer.slice(boundaryIndex + 2)
-
-      const shouldStop = processEvent(eventText)
-      if (shouldStop) {
-        await reader.cancel()
-        return { answer: fullText }
+    try {
+      const arr = imageBase64.split(',')
+      if (arr.length < 2) {
+        throw new Error('Invalid base64 string')
       }
-
-      boundaryIndex = buffer.indexOf('\n\n')
+      const mimeMatch = arr[0].match(/:(.*?);/)
+      if (!mimeMatch) {
+        throw new Error('Cannot extract mime type from base64')
+      }
+      const mime = mimeMatch[1]
+      const bstr = atob(arr[1])
+      const u8arr = new Uint8Array(bstr.length)
+      for (let i = 0; i < bstr.length; i++) u8arr[i] = bstr.charCodeAt(i)
+      formData.append('image', new File([u8arr], 'upload.png', { type: mime }))
+      console.log('图片已添加到 FormData')
+    } catch (e) {
+      console.error('图片处理失败:', e)
+      return { answer: `图片处理失败: ${e.message}` }
     }
   }
 
-  if (buffer.trim()) {
-    processEvent(buffer.trim())
-  }
+  // ✅ 关键：不要设置 Content-Type，让浏览器自动处理 multipart/form-data
+  try {
+    const response = await fetch('/api/chat/ask-stream', {
+      method: 'POST',
+      headers: { 
+        'Authorization': `Bearer ${token}`
+        // 注意：不要加 'Content-Type': 'multipart/form-data'
+        // 浏览器会自动设置，并加上 boundary
+      },
+      body: formData
+    })
+    
+    console.log('响应状态:', response.status)
+    
+    if (!response.ok) {
+      const errorText = await response.text()
+      console.error('请求失败:', response.status, errorText)
+      return { answer: `请求失败: ${response.status} - ${errorText}` }
+    }
 
-  return { answer: fullText }
+    const reader = response.body.getReader()
+    const decoder = new TextDecoder('utf-8')
+    let fullText = ''
+    let buffer = ''
+
+    const processEvent = (eventText) => {
+      if (!eventText) return false
+
+      const dataLines = eventText
+        .split('\n')
+        .filter((line) => line.startsWith('data:'))
+        .map((line) => line.replace(/^data:\s?/, ''))
+
+      if (dataLines.length === 0) return false
+
+      const text = dataLines.join('\n')
+      if (text === '[DONE]') return true
+
+      fullText += text
+      if (onChunk) onChunk(text, fullText)
+      return false
+    }
+
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+
+      buffer += decoder.decode(value, { stream: true })
+
+      let boundaryIndex = buffer.indexOf('\n\n')
+      while (boundaryIndex !== -1) {
+        const eventText = buffer.slice(0, boundaryIndex)
+        buffer = buffer.slice(boundaryIndex + 2)
+
+        const shouldStop = processEvent(eventText)
+        if (shouldStop) {
+          await reader.cancel()
+          return { answer: fullText }
+        }
+
+        boundaryIndex = buffer.indexOf('\n\n')
+      }
+    }
+
+    if (buffer.trim()) {
+      processEvent(buffer.trim())
+    }
+
+    return { answer: fullText }
+  } catch (e) {
+    console.error('请求异常:', e)
+    return { answer: `请求异常: ${e.message}` }
+  }
 }

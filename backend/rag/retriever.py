@@ -12,6 +12,85 @@ from utils.config import settings
 from utils.logger import logger
 
 
+class DashScopeEmbeddingFunction:
+    """DashScope（通义千问官方）Embedding 适配器"""
+
+    def __init__(self, model: Optional[str] = None) -> None:
+        self.model = model or settings.dashscope_embedding_model or "text-embedding-v3"
+        self.api_key = settings.dashscope_api_key
+        self.api_base = settings.dashscope_api_base or "https://dashscope.aliyuncs.com/api/v1/services/embeddings/text-embedding/text-embedding"
+
+    def __call__(self, input: Sequence[str]) -> List[List[float]]:
+        """ChromaDB 会以字符串列表形式调用该函数。"""
+        import requests
+        
+        clean_texts = [str(t).strip() for t in input if str(t).strip()]
+        if not clean_texts:
+            logger.warning("Embedding 输入为空，返回空向量")
+            return []
+
+        try:
+            headers = {
+                "Authorization": f"Bearer {self.api_key}",
+                "Content-Type": "application/json"
+            }
+            
+            # DashScope Embedding API
+            url = self.api_base
+            
+            payload = {
+                "model": self.model,
+                "input": {
+                    "texts": clean_texts
+                }
+            }
+            
+            response = requests.post(url, headers=headers, json=payload)
+            response.raise_for_status()
+            
+            data = response.json()
+            embeddings = []
+            for item in data.get("output", {}).get("embeddings", []):
+                embedding = item.get("embedding", [])
+                embeddings.append(embedding)
+            
+            logger.info(f"成功获取 {len(embeddings)} 个文本的向量表示")
+            return embeddings
+            
+        except Exception as e:
+            logger.error(f"DashScope Embedding 调用失败: {e}")
+            raise
+
+
+class SiliconFlowEmbeddingFunction:
+    """硅基流动 Embedding 适配器"""
+
+    def __init__(self, model: Optional[str] = None) -> None:
+        self.model = model or settings.embedding_model or "BAAI/bge-large-zh-v1.5"
+        self.client = OpenAI(
+            api_key=settings.openai_api_key,
+            base_url=settings.openai_api_base
+        )
+
+    def __call__(self, input: Sequence[str]) -> List[List[float]]:
+        """ChromaDB 会以字符串列表形式调用该函数。"""
+        clean_texts = [str(t).strip() for t in input if str(t).strip()]
+        if not clean_texts:
+            logger.warning("Embedding 输入为空，返回空向量")
+            return []
+
+        try:
+            response = self.client.embeddings.create(
+                model=self.model,
+                input=clean_texts
+            )
+            vectors = [item.embedding for item in response.data]
+            return vectors
+        except Exception as e:
+            logger.error(f"硅基流动 Embedding 调用失败: {e}")
+            raise
+
+
 class ChaoSuanEmbeddingFunction:
     """超算互联网 Qwen3-Embedding 适配器"""
 
@@ -216,10 +295,18 @@ class KnowledgeRetriever:
 
     def __init__(self):
         self.client = chromadb.PersistentClient(path=settings.chroma_persist_dir)
-        # 优先使用超算互联网Embedding（比赛限定模型），其次硅基流动，最后火山引擎
-        if settings.chaosuan_api_key and settings.chaosuan_embedding_model:
+        # 优先使用 DashScope（通义千问官方），其次硅基流动，然后超算互联网，最后火山引擎
+        if settings.dashscope_api_key and settings.dashscope_embedding_model:
+            logger.info(f"使用 DashScope Embedding 模型: {settings.dashscope_embedding_model}")
+            self.embedding_function = DashScopeEmbeddingFunction()
+        elif settings.openai_api_key and settings.embedding_model:
+            logger.info(f"使用硅基流动Embedding模型: {settings.embedding_model}")
+            self.embedding_function = SiliconFlowEmbeddingFunction()
+        elif settings.chaosuan_api_key and settings.chaosuan_embedding_model:
+            logger.info(f"使用超算互联网Embedding模型: {settings.chaosuan_embedding_model}")
             self.embedding_function = ChaoSuanEmbeddingFunction()
         else:
+            logger.info(f"使用火山引擎Embedding模型: {settings.volc_embedding_model}")
             self.embedding_function = VolcEmbeddingFunction()
 
         self.knowledge_collection = self.client.get_or_create_collection(
@@ -333,20 +420,28 @@ class KnowledgeRetriever:
             for doc, meta in zip(clean_docs, clean_metas)
         ]
 
-        embeddings = self.embedding_function(clean_docs)
+        # DashScope 每次最多处理 10 条文本
+        max_batch_size = 10
+        all_embeddings = []
+        for i in range(0, len(clean_docs), max_batch_size):
+            batch_docs = clean_docs[i:i+max_batch_size]
+            batch_embeddings = self.embedding_function(batch_docs)
+            all_embeddings.extend(batch_embeddings)
+            logger.info(f"  已获取 {min(i+max_batch_size, len(clean_docs))}/{len(clean_docs)} 条向量")
+        
         try:
             collection.upsert(
                 ids=ids,
                 documents=clean_docs,
                 metadatas=clean_metas,
-                embeddings=embeddings,
+                embeddings=all_embeddings,
             )
         except Exception:
             collection.add(
                 ids=ids,
                 documents=clean_docs,
                 metadatas=clean_metas,
-                embeddings=embeddings,
+                embeddings=all_embeddings,
             )
 
 

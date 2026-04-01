@@ -36,20 +36,21 @@ class SiliconFlowVisionClient:
     ) -> Optional[str]:
         """分析图片内容"""
         if not self.client:
-            logger.warning("SiliconFlow client not initialized")
+            logger.error("SiliconFlow client not initialized - API key may be missing")
             return None
         
         try:
             if messages:
                 # 使用传入的 messages
                 req_messages = messages
+                logger.info(f"Using provided messages with {len(messages)} message(s)")
             else:
                 # 从图片路径创建 messages
                 if not image_path or not os.path.exists(image_path):
                     logger.error(f"Image path invalid: {image_path}")
                     return None
                 
-                logger.info(f"Analyzing image: {image_path}")
+                logger.info(f"Analyzing image from path: {image_path}")
                 
                 with open(image_path, "rb") as f:
                     image_data = base64.b64encode(f.read()).decode()
@@ -75,24 +76,40 @@ class SiliconFlowVisionClient:
                     }
                 ]
             
+            # 验证 messages 格式
+            for i, msg in enumerate(req_messages):
+                if "content" in msg and isinstance(msg["content"], list):
+                    logger.info(f"Message {i} has multimodal content with {len(msg['content'])} items")
+                    for j, item in enumerate(msg["content"]):
+                        item_type = item.get("type", "unknown")
+                        if item_type == "image_url":
+                            image_url = item.get("image_url", {}).get("url", "")[:50]
+                            logger.info(f"  Item {j}: image_url ({image_url}...)")
+                        else:
+                            text_preview = item.get("text", "")[:50]
+                            logger.info(f"  Item {j}: {item_type} ({text_preview}...)")
+            
+            logger.info(f"Calling vision model: {self.vision_model}")
+            
             # 调用硅基流动 API
             response = await self.client.chat.completions.create(
                 model=self.vision_model,
                 messages=req_messages,
-                temperature=temperature or 0.7,
+                temperature=temperature or 0.3,
                 max_tokens=max_tokens or 2000
             )
             
             if response and response.choices:
                 content = response.choices[0].message.content
-                logger.info("Image analysis successful")
+                logger.info(f"Image analysis successful, response length: {len(content)}")
+                logger.info(f"Response preview: {content[:200]}...")
                 return content
             
-            logger.warning("Image analysis returned empty result")
+            logger.warning("Image analysis returned empty result (no choices)")
             return None
             
         except Exception as e:
-            logger.error(f"SiliconFlow vision error: {e}")
+            logger.error(f"SiliconFlow vision error: {e}", exc_info=True)
             return None
 
 
