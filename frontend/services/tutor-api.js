@@ -80,23 +80,52 @@ export const sendQuestion = async (question, imageBase64 = null, onChunk = null)
   }
 
   const reader = response.body.getReader()
-  const decoder = new TextDecoder()
+  const decoder = new TextDecoder('utf-8')
   let fullText = ''
+  let buffer = ''
+
+  const processEvent = (eventText) => {
+    if (!eventText) return false
+
+    const dataLines = eventText
+      .split('\n')
+      .filter((line) => line.startsWith('data:'))
+      .map((line) => line.replace(/^data:\s?/, ''))
+
+    if (dataLines.length === 0) return false
+
+    const text = dataLines.join('\n')
+    if (text === '[DONE]') return true
+
+    fullText += text
+    if (onChunk) onChunk(text, fullText)
+    return false
+  }
 
   while (true) {
     const { done, value } = await reader.read()
     if (done) break
-    const chunk = decoder.decode(value)
-    const lines = chunk.split('\n\n')
-    for (const line of lines) {
-      if (line.startsWith('data: ')) {
-        const text = line.slice(6)
-        if (text !== '[DONE]') {
-          fullText += text
-          if (onChunk) onChunk(text, fullText)
-        }
+
+    buffer += decoder.decode(value, { stream: true })
+
+    let boundaryIndex = buffer.indexOf('\n\n')
+    while (boundaryIndex !== -1) {
+      const eventText = buffer.slice(0, boundaryIndex)
+      buffer = buffer.slice(boundaryIndex + 2)
+
+      const shouldStop = processEvent(eventText)
+      if (shouldStop) {
+        await reader.cancel()
+        return { answer: fullText }
       }
+
+      boundaryIndex = buffer.indexOf('\n\n')
     }
   }
+
+  if (buffer.trim()) {
+    processEvent(buffer.trim())
+  }
+
   return { answer: fullText }
 }
