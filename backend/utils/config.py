@@ -70,6 +70,8 @@ class Settings(BaseSettings):
     openai_api_base: str = os.getenv("OPENAI_API_BASE", "https://api.openai.com/v1")
     llm_model: str = os.getenv("LLM_MODEL", "gpt-3.5-turbo")
     temperature: float = float(os.getenv("TEMPERATURE", "0.7"))
+    llm_max_tokens: int = int(os.getenv("LLM_MAX_TOKENS", "819200"))
+
 
     # 硅基流动视觉模型
     vision_model: str = os.getenv("VISION_MODEL", "")

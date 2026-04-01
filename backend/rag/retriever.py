@@ -219,8 +219,6 @@ class KnowledgeRetriever:
         # 优先使用超算互联网Embedding（比赛限定模型），其次硅基流动，最后火山引擎
         if settings.chaosuan_api_key and settings.chaosuan_embedding_model:
             self.embedding_function = ChaoSuanEmbeddingFunction()
-        elif settings.openai_api_key and settings.embedding_model:
-            self.embedding_function = SiliconFlowEmbeddingFunction()
         else:
             self.embedding_function = VolcEmbeddingFunction()
 

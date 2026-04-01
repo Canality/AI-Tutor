@@ -113,23 +113,35 @@ async def ask_stream(
         logger.info(f"Loaded {len(chat_history)} history messages for context")
 
         async def generate():
+            def _sse_event(data: str):
+                safe_data = (data or "").replace("\r\n", "\n").replace("\r", "\n")
+                for line in safe_data.split("\n"):
+                    yield f"data: {line}\n"
+                yield "\n"
+
             full_response = ""
-            async for chunk in tutor_service.process_question_stream(question, image_path, chat_history):
-                full_response += chunk
-                yield f"data: {chunk}\n\n"
-            
-            # 保存 AI 回复到数据库
-            ai_message = ChatMessage(
-                session_id=chat_session.id,
-                user_id=current_user.id,
-                role=RoleType.ASSISTANT,
-                content=full_response,
-                message_type=MessageType.TEXT,
-            )
-            db.add(ai_message)
-            chat_session.total_messages += 1
-            await db.commit()
-            logger.info(f"AI response saved, session_id={chat_session.id}")
+            try:
+                async for chunk in tutor_service.process_question_stream(question, image_path, chat_history):
+                    full_response += chunk
+                    for line in _sse_event(chunk):
+                        yield line
+
+                for line in _sse_event("[DONE]"):
+                    yield line
+            finally:
+                # 保存 AI 回复到数据库（即使中途中断也尽量保存已生成内容）
+                if full_response:
+                    ai_message = ChatMessage(
+                        session_id=chat_session.id,
+                        user_id=current_user.id,
+                        role=RoleType.ASSISTANT,
+                        content=full_response,
+                        message_type=MessageType.TEXT,
+                    )
+                    db.add(ai_message)
+                    chat_session.total_messages += 1
+                    await db.commit()
+                    logger.info(f"AI response saved, session_id={chat_session.id}")
 
         return StreamingResponse(
             generate(),

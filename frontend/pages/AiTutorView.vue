@@ -373,58 +373,68 @@ import katex from 'katex'
 const router = useRouter()
 
 // ==================== Markdown + LaTeX 渲染 ====================
-/**
- * 渲染 Markdown 和 LaTeX 公式
- * 先处理 LaTeX，再处理 Markdown
- */
 const renderContent = (text) => {
   if (!text) return ''
-  
-  // 步骤1：保护代码块中的内容（暂不处理）
+
+  let content = String(text)
   const codeBlocks = []
-  text = text.replace(/```[\s\S]*?```/g, (match) => {
+  const mathBlocks = []
+
+  // 1) 保护代码块，避免误处理
+  content = content.replace(/```[\s\S]*?```/g, (match) => {
+    const token = `@@CODEBLOCK${codeBlocks.length}@@`
     codeBlocks.push(match)
-    return `\x00CODE${codeBlocks.length - 1}\x00`
+    return token
   })
-  
-  // 步骤2：处理块级公式 $$...$$
-  text = text.replace(/\$\$([\s\S]*?)\$\$/g, (match, formula) => {
+
+  // 2) 兼容 \(...\) / \[...\] 语法
+  content = content
+    .replace(/\\\[([\s\S]*?)\\\]/g, (_, formula) => `$$${formula}$$`)
+    .replace(/\\\(([\s\S]*?)\\\)/g, (_, formula) => `$${formula}$`)
+
+  // 3) 渲染块级公式
+  content = content.replace(/\$\$([\s\S]*?)\$\$/g, (_, formula) => {
     try {
       const html = katex.renderToString(formula.trim(), {
         throwOnError: false,
         displayMode: true
       })
-      return `\x00MATH${html}\x00`
-    } catch (e) {
+      const token = `@@MATHBLOCK${mathBlocks.length}@@`
+      mathBlocks.push(html)
+      return token
+    } catch {
       return `<div class="latex-error">${formula}</div>`
     }
   })
-  
-  // 步骤3：处理行内公式 $...$
-  text = text.replace(/\$([^\$\n]+?)\$/g, (match, formula) => {
+
+  // 4) 渲染行内公式
+  content = content.replace(/\$([^\n$]+?)\$/g, (_, formula) => {
     try {
       const html = katex.renderToString(formula.trim(), {
         throwOnError: false,
         displayMode: false
       })
-      return `\x00MATH${html}\x00`
-    } catch (e) {
+      const token = `@@MATHINLINE${mathBlocks.length}@@`
+      mathBlocks.push(html)
+      return token
+    } catch {
       return `<span class="latex-error">${formula}</span>`
     }
   })
-  
-  // 步骤4：处理 Markdown
-  text = marked.parse(text, { breaks: true })
-  
-  // 步骤5：恢复保护的数学公式
-  text = text.replace(/\x00MATH(.*?)\x00/g, '$1')
-  
-  // 步骤6：恢复代码块
-  text = text.replace(/\x00CODE(\d+)\x00/g, (match, index) => {
-    return codeBlocks[parseInt(index)]
+
+  // 5) Markdown 转 HTML
+  let html = marked.parse(content, { breaks: true })
+
+  // 6) 恢复公式与代码块
+  html = html.replace(/@@MATH(?:BLOCK|INLINE)(\d+)@@/g, (_, index) => {
+    return mathBlocks[Number(index)] || ''
   })
-  
-  return text
+
+  html = html.replace(/@@CODEBLOCK(\d+)@@/g, (_, index) => {
+    return codeBlocks[Number(index)] || ''
+  })
+
+  return html
 }
 
 // ==================== 侧边栏状态 ====================

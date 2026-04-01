@@ -58,7 +58,7 @@ class InstructorAgent:
                 api_key=settings.openai_api_key,
                 base_url=settings.openai_api_base,
                 streaming=True,
-                max_tokens=4096
+                max_tokens=settings.llm_max_tokens
             )
         else:
             logger.error("invalid openai api key")
