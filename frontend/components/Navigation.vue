@@ -71,8 +71,11 @@ const closeNavOnMobile = () => {
 // 处理退出登录
 const handleLogout = () => {
   localStorage.removeItem('token')
-  router.push('/')
+  localStorage.removeItem('access_token')
+  localStorage.removeItem('user_info')
+  router.push('/login')
 }
+
 </script>
 
 <style scoped>

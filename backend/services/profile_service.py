@@ -268,8 +268,16 @@ async def get_user_profile(db: AsyncSession, user_id: int) -> Dict:
             "correct_count": 0,
             "accuracy": 0.0,
             "knowledge_mastery": {},
-            "weak_points": {}
+            "weak_points": {},
+            "theta_se": None,
+            "theta_ci_lower": None,
+            "theta_ci_upper": None,
+            "avg_mastery": None,
+            "weak_kp_count": 0,
+            "learning_style": None,
+            "mastery_strategy": DEFAULT_MASTERY_STRATEGY,
         }
+
 
     # 计算正确率（防止除以零）
     accuracy = 0.0
@@ -282,8 +290,16 @@ async def get_user_profile(db: AsyncSession, user_id: int) -> Dict:
         "correct_count": profile.correct_count,
         "accuracy": accuracy,
         "knowledge_mastery": profile.knowledge_mastery or {},
-        "weak_points": profile.weak_points or {}
+        "weak_points": profile.weak_points or {},
+        "theta_se": profile.theta_se,
+        "theta_ci_lower": profile.theta_ci_lower,
+        "theta_ci_upper": profile.theta_ci_upper,
+        "avg_mastery": profile.avg_mastery,
+        "weak_kp_count": profile.weak_kp_count or 0,
+        "learning_style": profile.learning_style,
+        "mastery_strategy": profile.mastery_strategy or DEFAULT_MASTERY_STRATEGY,
     }
+
 
 
 async def get_user_profile_with_mastery(

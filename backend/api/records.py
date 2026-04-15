@@ -6,11 +6,11 @@ from database.db import get_db
 from schemas.question import CustomQuestionPayload
 from services.record_service import (
     save_uploaded_question_record,
-    save_recommended_question_record,
     get_learning_history,
     extract_question_data,
     RecordValidationError
 )
+
 
 router = APIRouter(prefix="/records", tags=["学习记录"])
 
@@ -72,15 +72,19 @@ async def submit_recommended_answer(
     try:
         from services.recommendation_service import record_recommendation_result
         
+        if algorithm_version is None:
+            algorithm_version = "treatment" if user_id % 2 == 0 else "control"
+
         record = await record_recommendation_result(
             db=db,
             user_id=user_id,
             question_id=question_id,
             user_answer=answer,
             is_correct=is_correct,
-            algorithm_version=algorithm_version or "v1.0",
+            algorithm_version=algorithm_version,
             recommendation_session_id=recommendation_session_id
         )
+
 
         return {
             "success": True,

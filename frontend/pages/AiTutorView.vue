@@ -39,7 +39,16 @@
             <span class="nav-icon">✨</span>
             <span>数列推荐</span>
           </router-link>
+          <router-link to="/exercises" class="nav-item">
+            <span class="nav-icon">📝</span>
+            <span>练习中心</span>
+          </router-link>
+          <router-link to="/profile" class="nav-item">
+            <span class="nav-icon">📊</span>
+            <span>学习画像</span>
+          </router-link>
         </div>
+
 
         <!-- 历史会话列表 -->
         <div class="history-section" v-show="!isSidebarCollapsed">
@@ -200,6 +209,21 @@
                 </div>
               </div>
               
+              <div class="hint-level-toolbar">
+                <span class="hint-level-label">提示等级</span>
+                <button
+                  v-for="option in hintLevelOptions"
+                  :key="option.value"
+                  class="hint-level-btn"
+                  :class="{ active: selectedHintLevel === option.value }"
+                  type="button"
+                  @click="selectedHintLevel = option.value"
+                  :title="option.desc"
+                >
+                  {{ option.value }} · {{ option.label }}
+                </button>
+              </div>
+
               <div class="input-main">
                 <textarea 
                   v-model="questionText"
@@ -652,6 +676,15 @@ const textareaRef = ref(null)
 const isLoading = ref(false)
 const isMemoryCollapsed = ref(false)
 
+const hintLevelOptions = [
+  { value: 'L0', label: '自主', desc: '仅批改/追问，不直接完整解答' },
+  { value: 'L1', label: '方向', desc: '给出解题方向，不展开细节' },
+  { value: 'L2', label: '公式', desc: '给出相关公式和定理提示' },
+  { value: 'L3', label: '步骤', desc: '给出关键步骤，保留最后结论' },
+  { value: 'L4', label: '答案', desc: '给出完整解答与结论' }
+]
+const selectedHintLevel = ref('L0')
+
 const autoResize = () => {
   const textarea = textareaRef.value
   if (textarea) {
@@ -734,7 +767,7 @@ const submitQuestion = async () => {
       nextTick(() => scrollToBottom())
     }
     
-    const response = await sendQuestion(question, imageBase64, onChunk)
+    const response = await sendQuestion(question, imageBase64, onChunk, selectedHintLevel.value)
     
     aiMessage.value.loading = false
     saveConversations()
@@ -1402,6 +1435,44 @@ watch(currentMessages, () => {
 }
 
 .input-toolbar { margin-bottom: 12px; }
+
+.hint-level-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.hint-level-label {
+  font-size: 12px;
+  color: #666;
+  font-weight: 600;
+  margin-right: 2px;
+}
+
+.hint-level-btn {
+  border: 1px solid #d9d9d9;
+  background: #fff;
+  color: #555;
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.hint-level-btn:hover {
+  border-color: #0071e3;
+  color: #0071e3;
+}
+
+.hint-level-btn.active {
+  background: #e8f2ff;
+  border-color: #0071e3;
+  color: #005bb5;
+  font-weight: 600;
+}
 
 .image-preview-mini {
   display: inline-flex;

@@ -1,4 +1,5 @@
-from sqlalchemy import Column, Integer, String, Text, Boolean, DateTime, ForeignKey, Enum
+from sqlalchemy import Column, Integer, String, Text, Boolean, DateTime, ForeignKey, Enum, Float
+
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 from database.db import Base
@@ -98,8 +99,18 @@ class UserKnowledgeMastery(Base):
     mastery_level = Column(Integer, default=0, index=True)
     practice_count = Column(Integer, default=0)
     correct_count = Column(Integer, default=0)
+
+    # V3 扩展字段(BKT 参数)
+    p_guess = Column(Float, default=0.2)
+    p_slip = Column(Float, default=0.1)
+    p_known = Column(Float, default=0.5)
+    consecutive_correct = Column(Integer, default=0)
+    consecutive_wrong = Column(Integer, default=0)
+
+
     last_practiced_at = Column(DateTime(timezone=True), nullable=True)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
 
     user = relationship("User", backref="knowledge_mastery")
     knowledge_point = relationship("KnowledgePoint", back_populates="user_mastery")

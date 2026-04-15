@@ -1,12 +1,15 @@
 import asyncio
-from database.db import init_db
+from database.db import init_db, async_engine
 from utils.logger import logger
 
 
 async def main():
     logger.info("Initializing database...")
-    await init_db()
-    logger.info("Database initialization complete!")
+    try:
+        await init_db()
+        logger.info("Database initialization complete!")
+    finally:
+        await async_engine.dispose()
 
 
 if __name__ == "__main__":

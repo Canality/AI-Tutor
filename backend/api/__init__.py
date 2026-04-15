@@ -1,5 +1,6 @@
 from fastapi import APIRouter
-from api import auth, chat, exercises, profile, upload, records, rag, questions
+from api import auth, chat, exercises, profile, upload, records, rag, questions, learning_tools, advisor
+
 
 api_router = APIRouter(prefix="/api")
 
@@ -11,3 +12,6 @@ api_router.include_router(upload.router, tags=["upload"])
 api_router.include_router(records.router, tags=["records"])
 api_router.include_router(rag.router, tags=["rag"])
 api_router.include_router(questions.router, tags=["questions"])
+api_router.include_router(learning_tools.router, tags=["learning-tools"])
+api_router.include_router(advisor.router, tags=["advisor"])
+

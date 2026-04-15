@@ -160,6 +160,112 @@ CREATE TABLE IF NOT EXISTS `user_knowledge_mastery` (
   CONSTRAINT `fk_ukm_knowledge_point` FOREIGN KEY (`knowledge_point_id`) REFERENCES `knowledge_points` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- ==================== V3 扩展字段 ====================
+
+-- learning_records 表扩展
+ALTER TABLE `learning_records` ADD COLUMN IF NOT EXISTS `source_type` VARCHAR(50) NOT NULL DEFAULT 'recommended';
+ALTER TABLE `learning_records` ADD COLUMN IF NOT EXISTS `custom_question_data` JSON NULL;
+ALTER TABLE `learning_records` ADD COLUMN IF NOT EXISTS `ai_feedback` TEXT NULL;
+ALTER TABLE `learning_records` ADD COLUMN IF NOT EXISTS `recommendation_session_id` VARCHAR(100) NULL;
+ALTER TABLE `learning_records` ADD COLUMN IF NOT EXISTS `recommendation_algorithm_version` VARCHAR(50) NULL;
+ALTER TABLE `learning_records` ADD COLUMN IF NOT EXISTS `hint_count` INT DEFAULT 0;
+ALTER TABLE `learning_records` ADD COLUMN IF NOT EXISTS `time_spent` INT NULL;
+ALTER TABLE `learning_records` ADD COLUMN IF NOT EXISTS `skip_reason` VARCHAR(20) NULL;
+ALTER TABLE `learning_records` ADD COLUMN IF NOT EXISTS `theta_before` FLOAT NULL;
+ALTER TABLE `learning_records` ADD COLUMN IF NOT EXISTS `theta_after` FLOAT NULL;
+ALTER TABLE `learning_records` ADD COLUMN IF NOT EXISTS `mastery_updates` JSON NULL;
+
+-- user_profiles 表扩展
+ALTER TABLE `user_profiles` ADD COLUMN IF NOT EXISTS `theta_se` FLOAT NULL;
+ALTER TABLE `user_profiles` ADD COLUMN IF NOT EXISTS `theta_ci_lower` FLOAT NULL;
+ALTER TABLE `user_profiles` ADD COLUMN IF NOT EXISTS `theta_ci_upper` FLOAT NULL;
+ALTER TABLE `user_profiles` ADD COLUMN IF NOT EXISTS `avg_mastery` FLOAT NULL;
+ALTER TABLE `user_profiles` ADD COLUMN IF NOT EXISTS `weak_kp_count` INT DEFAULT 0;
+ALTER TABLE `user_profiles` ADD COLUMN IF NOT EXISTS `learning_style` VARCHAR(20) NULL;
+ALTER TABLE `user_profiles` ADD COLUMN IF NOT EXISTS `mastery_strategy` VARCHAR(20) DEFAULT 'simple';
+
+-- user_knowledge_mastery 表扩展(BKT参数)
+ALTER TABLE `user_knowledge_mastery` ADD COLUMN IF NOT EXISTS `p_guess` FLOAT DEFAULT 0.2;
+ALTER TABLE `user_knowledge_mastery` ADD COLUMN IF NOT EXISTS `p_slip` FLOAT DEFAULT 0.1;
+ALTER TABLE `user_knowledge_mastery` ADD COLUMN IF NOT EXISTS `p_known` FLOAT DEFAULT 0.5;
+ALTER TABLE `user_knowledge_mastery` ADD COLUMN IF NOT EXISTS `consecutive_correct` INT DEFAULT 0;
+ALTER TABLE `user_knowledge_mastery` ADD COLUMN IF NOT EXISTS `consecutive_wrong` INT DEFAULT 0;
+
+-- ==================== V3 新增表 ====================
+
+CREATE TABLE IF NOT EXISTS `user_ability_history` (
+  `id` INT NOT NULL AUTO_INCREMENT,
+  `user_id` INT NOT NULL,
+  `theta` FLOAT NOT NULL,
+  `theta_se` FLOAT DEFAULT NULL,
+  `theta_ci_lower` FLOAT DEFAULT NULL,
+  `theta_ci_upper` FLOAT DEFAULT NULL,
+  `avg_mastery` FLOAT DEFAULT NULL,
+  `weak_kp_count` INT DEFAULT 0,
+  `total_questions` INT DEFAULT 0,
+  `correct_count` INT DEFAULT 0,
+  `recorded_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_user_time` (`user_id`, `recorded_at`),
+  CONSTRAINT `fk_uah_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `mistake_book` (
+  `id` INT NOT NULL AUTO_INCREMENT,
+  `user_id` INT NOT NULL,
+  `question_id` INT NOT NULL,
+  `error_count` INT DEFAULT 1,
+  `first_error_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `last_error_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `mastered` BOOLEAN DEFAULT FALSE,
+  `mastered_at` DATETIME DEFAULT NULL,
+  `review_count` INT DEFAULT 0,
+  `last_review_at` DATETIME DEFAULT NULL,
+  `next_review_at` DATETIME DEFAULT NULL,
+  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_user_question` (`user_id`, `question_id`),
+  KEY `idx_user_mastered` (`user_id`, `mastered`),
+  KEY `idx_next_review` (`user_id`, `next_review_at`),
+  CONSTRAINT `fk_mistake_book_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_mistake_book_question` FOREIGN KEY (`question_id`) REFERENCES `questions` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `favorites` (
+  `id` INT NOT NULL AUTO_INCREMENT,
+  `user_id` INT NOT NULL,
+  `question_id` INT NOT NULL,
+  `folder_name` VARCHAR(50) NOT NULL DEFAULT '默认收藏夹',
+  `note` TEXT DEFAULT NULL,
+  `tags` JSON DEFAULT NULL,
+  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_user_question` (`user_id`, `question_id`),
+  KEY `idx_user_folder` (`user_id`, `folder_name`),
+  CONSTRAINT `fk_favorite_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_favorite_question` FOREIGN KEY (`question_id`) REFERENCES `questions` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `user_interaction_logs` (
+  `id` INT NOT NULL AUTO_INCREMENT,
+  `user_id` INT NOT NULL,
+  `session_id` VARCHAR(100) DEFAULT NULL,
+  `interaction_type` VARCHAR(50) NOT NULL,
+  `question_id` INT DEFAULT NULL,
+  `knowledge_points` JSON DEFAULT NULL,
+  `difficulty` INT DEFAULT NULL,
+  `content` TEXT DEFAULT NULL,
+  `metadata` JSON DEFAULT NULL,
+  `sentiment_tag` VARCHAR(20) DEFAULT NULL,
+  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_user_time` (`user_id`, `created_at`),
+  KEY `idx_session` (`session_id`),
+  CONSTRAINT `fk_interaction_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_interaction_question` FOREIGN KEY (`question_id`) REFERENCES `questions` (`id`) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 -- 初始化知识点数据
 INSERT INTO `knowledge_points` (`name`, `description`, `parent_id`, `level`) VALUES
 ('数列', '数学中的数列概念和性质', NULL, 1),

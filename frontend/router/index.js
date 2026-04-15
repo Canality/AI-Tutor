@@ -29,9 +29,22 @@ const router = createRouter({
       name: 'recommend',
       component: () => import('../pages/RecommendView.vue'),
       meta: { requiresAuth: true }  // 需要登录
+    },
+    {
+      path: '/exercises',
+      name: 'exercises',
+      component: () => import('../pages/ExercisesView.vue'),
+      meta: { requiresAuth: true }
+    },
+    {
+      path: '/profile',
+      name: 'profile',
+      component: () => import('../pages/ProfileView.vue'),
+      meta: { requiresAuth: true }
     }
   ]
 })
+
 
 // 路由守卫：检查登录状态
 router.beforeEach((to, from, next) => {
