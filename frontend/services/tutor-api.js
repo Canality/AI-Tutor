@@ -42,7 +42,7 @@ const getOrCreateToken = async () => {
   }
 }
 
-export const sendQuestion = async (question, imageBase64 = null, onChunk = null) => {
+export const sendQuestion = async (question, imageBase64 = null, onChunk = null, hintLevel = 'L0') => {
   const token = await getOrCreateToken()
   
   if (!token) {
@@ -60,8 +60,14 @@ export const sendQuestion = async (question, imageBase64 = null, onChunk = null)
   }
   
   formData.append('question', safeQuestion || ' ')
+
+  const normalizedHintLevel = (hintLevel || 'L0').toUpperCase().trim()
+  const safeHintLevel = ['L0', 'L1', 'L2', 'L3', 'L4'].includes(normalizedHintLevel)
+    ? normalizedHintLevel
+    : 'L0'
+  formData.append('hint_level', safeHintLevel)
   
-  console.log('发送请求:', { question: safeQuestion, hasImage: !!imageBase64 })
+  console.log('发送请求:', { question: safeQuestion, hasImage: !!imageBase64, hintLevel: safeHintLevel })
   
   if (imageBase64) {
     try {

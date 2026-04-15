@@ -16,6 +16,7 @@ class TutorService:
             text_content: str,
             image_path: Optional[str] = None,
             chat_history: Optional[List[BaseMessage]] = None,
+            hint_level: Optional[str] = "L0",
     ):
         try:
             logger.info(f"Tutor service started for {text_content}")
@@ -32,8 +33,13 @@ class TutorService:
                         question_text = f"{text_content}\n\ncontent of the question：{parsed_question}"
                         logger.info("finished parsing image, start to solve question")
 
+            normalized_hint_level = (hint_level or "L0").upper().strip()
+            if normalized_hint_level not in {"L0", "L1", "L2", "L3", "L4"}:
+                normalized_hint_level = "L0"
+
             logger.info(f"Tutor service started for {question_text[0:200]}")
-            result = await instructor_agent.solve(question_text, chat_history)
+            logger.info(f"Hint level in use: {normalized_hint_level}")
+            result = await instructor_agent.solve(question_text, chat_history, normalized_hint_level)
             return result
         except Exception as e:
             logger.error(e)
@@ -48,7 +54,8 @@ class TutorService:
         self,
         text_content: str,
         image_path: Optional[str] = None,
-        chat_history: Optional[List[BaseMessage]] = None 
+        chat_history: Optional[List[BaseMessage]] = None,
+        hint_level: Optional[str] = "L0"
     ) -> AsyncGenerator[str, None]:
         try:
             logger.info(f"Tutor service started for text: {text_content[:100]}...")
@@ -79,9 +86,14 @@ class TutorService:
                     logger.error("Image parser returned None")
                     yield "⚠️ 图片解析失败，将仅根据您输入的文字进行回答...\n\n"
 
+            normalized_hint_level = (hint_level or "L0").upper().strip()
+            if normalized_hint_level not in {"L0", "L1", "L2", "L3", "L4"}:
+                normalized_hint_level = "L0"
+
             logger.info(f"Final question text: {question_text[:200]}...")
-            
-            async for chunk in instructor_agent.solve_stream(question_text, chat_history):
+            logger.info(f"Hint level in use: {normalized_hint_level}")
+
+            async for chunk in instructor_agent.solve_stream(question_text, chat_history, normalized_hint_level):
                 yield chunk
 
         except Exception as e:

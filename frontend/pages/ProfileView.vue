@@ -14,14 +14,94 @@
 
       <section class="card">
         <h2>能力曲线（最近记录）</h2>
-        <div v-if="dashboard.ability_curve.length === 0" class="empty">暂无能力曲线数据</div>
-        <div v-else class="curve-list">
-          <div v-for="(item, idx) in dashboard.ability_curve.slice(-10)" :key="idx" class="curve-item">
-            <div class="curve-head">
-              <span>{{ formatTime(item.time) }}</span>
-              <strong>θ={{ safeNum(item.theta) }}</strong>
+        <div v-if="chartData.points.length === 0" class="empty">暂无能力曲线数据</div>
+        <div v-else>
+          <div class="ability-chart-wrap">
+            <svg class="ability-chart" :viewBox="`0 0 ${chartData.width} ${chartData.height}`" preserveAspectRatio="none">
+              <line
+                v-for="tick in chartData.yTicks"
+                :key="`grid-${tick.label}`"
+                :x1="chartData.padding.left"
+                :x2="chartData.width - chartData.padding.right"
+                :y1="tick.y"
+                :y2="tick.y"
+                class="grid-line"
+              />
+
+              <text
+                v-for="tick in chartData.yTicks"
+                :key="`label-y-${tick.label}`"
+                :x="chartData.padding.left - 10"
+                :y="tick.y + 4"
+                class="axis-label y-label"
+              >
+                {{ tick.label }}
+              </text>
+
+              <line
+                v-for="tick in chartData.xTicks"
+                :key="`label-x-${tick.index}`"
+                :x1="tick.x"
+                :x2="tick.x"
+                :y1="chartData.padding.top"
+                :y2="chartData.height - chartData.padding.bottom"
+                class="grid-line vertical"
+              />
+
+              <path :d="chartData.areaPath" class="ci-area" />
+              <path :d="chartData.linePath" class="theta-line" />
+
+              <circle
+                v-for="point in chartData.points"
+                :key="`point-${point.index}`"
+                :cx="point.x"
+                :cy="point.y"
+                r="3.5"
+                class="theta-point"
+              >
+                <title>{{ point.tooltip }}</title>
+              </circle>
+
+              <line
+                :x1="chartData.padding.left"
+                :x2="chartData.padding.left"
+                :y1="chartData.padding.top"
+                :y2="chartData.height - chartData.padding.bottom"
+                class="axis-line"
+              />
+              <line
+                :x1="chartData.padding.left"
+                :x2="chartData.width - chartData.padding.right"
+                :y1="chartData.height - chartData.padding.bottom"
+                :y2="chartData.height - chartData.padding.bottom"
+                class="axis-line"
+              />
+
+              <text
+                v-for="tick in chartData.xTicks"
+                :key="`x-tick-${tick.index}`"
+                :x="tick.x"
+                :y="chartData.height - chartData.padding.bottom + 20"
+                class="axis-label x-label"
+              >
+                {{ tick.label }}
+              </text>
+            </svg>
+          </div>
+
+          <div class="chart-legend">
+            <span><i class="legend-line"></i>θ 能力值</span>
+            <span><i class="legend-area"></i>95% 置信区间</span>
+          </div>
+
+          <div class="curve-list">
+            <div v-for="(item, idx) in dashboard.ability_curve.slice(-10)" :key="idx" class="curve-item">
+              <div class="curve-head">
+                <span>{{ formatTime(item.time) }}</span>
+                <strong>θ={{ safeNum(item.theta) }}</strong>
+              </div>
+              <div class="curve-ci">CI: [{{ safeNum(item.theta_ci_lower) }}, {{ safeNum(item.theta_ci_upper) }}]</div>
             </div>
-            <div class="curve-ci">CI: [{{ safeNum(item.theta_ci_lower) }}, {{ safeNum(item.theta_ci_upper) }}]</div>
           </div>
         </div>
       </section>
@@ -108,9 +188,125 @@ const distributionList = computed(() => {
     .slice(0, 12)
 })
 
+const chartData = computed(() => {
+  const width = 820
+  const height = 300
+  const padding = { top: 20, right: 20, bottom: 38, left: 52 }
+
+  const source = (dashboard.value?.ability_curve || [])
+    .map((item, index) => {
+      const theta = Number(item?.theta)
+      const lower = Number(item?.theta_ci_lower)
+      const upper = Number(item?.theta_ci_upper)
+      const parsedTime = item?.time ? new Date(item.time) : null
+      return {
+        index,
+        time: item?.time,
+        displayTime: parsedTime && !Number.isNaN(parsedTime.getTime())
+          ? parsedTime.toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+          : '-',
+        theta,
+        lower: Number.isFinite(lower) ? lower : theta,
+        upper: Number.isFinite(upper) ? upper : theta,
+      }
+    })
+    .filter((item) => Number.isFinite(item.theta))
+
+  if (source.length === 0) {
+    return {
+      width,
+      height,
+      padding,
+      points: [],
+      yTicks: [],
+      xTicks: [],
+      linePath: '',
+      areaPath: '',
+    }
+  }
+
+  const allValues = source.flatMap((item) => [item.theta, item.lower, item.upper]).filter(Number.isFinite)
+  let minY = Math.min(...allValues)
+  let maxY = Math.max(...allValues)
+
+  if (minY === maxY) {
+    minY -= 0.5
+    maxY += 0.5
+  }
+
+  const extra = (maxY - minY) * 0.12
+  minY -= extra
+  maxY += extra
+
+  const plotWidth = width - padding.left - padding.right
+  const plotHeight = height - padding.top - padding.bottom
+  const xStep = source.length > 1 ? plotWidth / (source.length - 1) : 0
+
+  const toX = (idx) => (source.length === 1 ? padding.left + plotWidth / 2 : padding.left + idx * xStep)
+  const toY = (value) => {
+    const ratio = (value - minY) / (maxY - minY)
+    return padding.top + (1 - ratio) * plotHeight
+  }
+
+  const points = source.map((item, idx) => {
+    const x = toX(idx)
+    const y = toY(item.theta)
+    return {
+      ...item,
+      x,
+      y,
+      lowerY: toY(item.lower),
+      upperY: toY(item.upper),
+      tooltip: `${item.displayTime} | θ=${item.theta.toFixed(2)} | CI=[${item.lower.toFixed(2)}, ${item.upper.toFixed(2)}]`,
+    }
+  })
+
+  const linePath = points
+    .map((point, idx) => `${idx === 0 ? 'M' : 'L'} ${point.x.toFixed(2)} ${point.y.toFixed(2)}`)
+    .join(' ')
+
+  const upperPath = points
+    .map((point, idx) => `${idx === 0 ? 'M' : 'L'} ${point.x.toFixed(2)} ${point.upperY.toFixed(2)}`)
+    .join(' ')
+  const lowerPath = [...points]
+    .reverse()
+    .map((point) => `L ${point.x.toFixed(2)} ${point.lowerY.toFixed(2)}`)
+    .join(' ')
+  const areaPath = `${upperPath} ${lowerPath} Z`
+
+  const yTicks = Array.from({ length: 5 }, (_, idx) => {
+    const value = maxY - ((maxY - minY) * idx) / 4
+    return { y: toY(value), label: value.toFixed(2) }
+  })
+
+  const xTickCount = Math.min(5, points.length)
+  const xTickIndexes = Array.from({ length: xTickCount }, (_, idx) => {
+    if (xTickCount === 1) return 0
+    return Math.round((idx * (points.length - 1)) / (xTickCount - 1))
+  })
+
+  const xTicks = [...new Set(xTickIndexes)].map((idx) => ({
+    index: idx,
+    x: points[idx].x,
+    label: points[idx].displayTime,
+  }))
+
+  return {
+    width,
+    height,
+    padding,
+    points,
+    yTicks,
+    xTicks,
+    linePath,
+    areaPath,
+  }
+})
+
 const safeNum = (v) => (typeof v === 'number' ? v.toFixed(2) : '-')
 const pct = (v) => (typeof v === 'number' ? `${(v * 100).toFixed(1)}%` : '-')
 const formatTime = (t) => (t ? new Date(t).toLocaleString() : '-')
+
 
 const loadAll = async () => {
   loading.value = true
@@ -151,6 +347,77 @@ onMounted(loadAll)
 .card h2 { font-size: 16px; margin-bottom: 12px; }
 .empty { color: #888; font-size: 14px; }
 .grid-two { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.ability-chart-wrap {
+  width: 100%;
+  border: 1px solid #eef1f5;
+  border-radius: 12px;
+  background: linear-gradient(180deg, #f9fbff 0%, #ffffff 100%);
+  padding: 8px 8px 2px;
+  overflow: hidden;
+}
+.ability-chart {
+  width: 100%;
+  height: 290px;
+  display: block;
+}
+.grid-line {
+  stroke: #e8edf5;
+  stroke-width: 1;
+}
+.grid-line.vertical {
+  stroke-dasharray: 4 4;
+}
+.axis-line {
+  stroke: #cdd6e3;
+  stroke-width: 1.2;
+}
+.axis-label {
+  fill: #7b8794;
+  font-size: 11px;
+}
+.y-label {
+  text-anchor: end;
+}
+.x-label {
+  text-anchor: middle;
+}
+.ci-area {
+  fill: rgba(37, 99, 235, 0.16);
+}
+.theta-line {
+  fill: none;
+  stroke: #2563eb;
+  stroke-width: 2.2;
+}
+.theta-point {
+  fill: #2563eb;
+  stroke: #ffffff;
+  stroke-width: 1.5;
+}
+.chart-legend {
+  display: flex;
+  gap: 18px;
+  flex-wrap: wrap;
+  margin: 10px 0 12px;
+  color: #4b5563;
+  font-size: 12px;
+}
+.chart-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.legend-line {
+  width: 18px;
+  height: 0;
+  border-top: 2px solid #2563eb;
+}
+.legend-area {
+  width: 16px;
+  height: 10px;
+  background: rgba(37, 99, 235, 0.18);
+  border: 1px solid rgba(37, 99, 235, 0.28);
+}
 .curve-list { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .curve-item { border: 1px solid #eef1f5; border-radius: 10px; padding: 10px; }
 .curve-head { display: flex; justify-content: space-between; font-size: 13px; color: #444; }
@@ -169,6 +436,8 @@ onMounted(loadAll)
 @media (max-width: 900px) {
   .profile-page { margin-left: 0; }
   .grid-two { grid-template-columns: 1fr; }
+  .ability-chart { height: 240px; }
+  .axis-label { font-size: 10px; }
   .curve-list { grid-template-columns: 1fr; }
   .progress-row { grid-template-columns: 1fr; }
 }

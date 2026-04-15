@@ -39,6 +39,7 @@ async def save_uploaded_file(upload_file: UploadFile) -> str:
 async def ask_stream(
     question: str = Form(...),
     image: Optional[UploadFile] = File(None),
+    hint_level: str = Form("L0"),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -112,6 +113,11 @@ async def ask_stream(
         
         logger.info(f"Loaded {len(chat_history)} history messages for context")
 
+        normalized_hint_level = (hint_level or "L0").upper().strip()
+        if normalized_hint_level not in {"L0", "L1", "L2", "L3", "L4"}:
+            normalized_hint_level = "L0"
+        logger.info(f"ask_stream hint_level={normalized_hint_level}")
+
         async def generate():
             def _sse_event(data: str):
                 safe_data = (data or "").replace("\r\n", "\n").replace("\r", "\n")
@@ -121,7 +127,12 @@ async def ask_stream(
 
             full_response = ""
             try:
-                async for chunk in tutor_service.process_question_stream(question, image_path, chat_history):
+                async for chunk in tutor_service.process_question_stream(
+                    question,
+                    image_path,
+                    chat_history,
+                    normalized_hint_level,
+                ):
                     full_response += chunk
                     for line in _sse_event(chunk):
                         yield line
