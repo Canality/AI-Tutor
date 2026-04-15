@@ -1,4 +1,5 @@
-from sqlalchemy import Column, Integer, Text, Boolean, DateTime, ForeignKey, String, JSON
+from sqlalchemy import Column, Integer, Text, Boolean, DateTime, ForeignKey, String, JSON, Float
+
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 from database.db import Base
@@ -74,8 +75,17 @@ class LearningRecord(Base):
     # 示例值: "v1.0", "v2.0-experimental", "control", "treatment"
     recommendation_algorithm_version = Column(String(50), nullable=True, index=True)
 
+    # --- V3 扩展字段 ---
+    hint_count = Column(Integer, default=0, nullable=False)
+    time_spent = Column(Integer, nullable=True)  # 作答耗时(秒)
+    skip_reason = Column(String(20), nullable=True)  # too_easy / too_hard / other
+    theta_before = Column(Float, nullable=True)
+    theta_after = Column(Float, nullable=True)
+    mastery_updates = Column(JSON, nullable=True)
+
     # --- 时间戳 ---
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+
 
     # --- 关系定义 ---
     # back_populates 需要在 User 模型中也对应添加

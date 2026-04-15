@@ -1,208 +1,199 @@
-// API 服务层，用于与后端进行通信
+// API 服务层，用于与后端通信
 
-// 通用请求方法
-async function request(endpoint, options = {}) {
-  // 使用相对路径，通过 Vite 代理转发到后端
-  const url = `/api${endpoint}`;
-  console.log('请求URL:', url);
-  
-  // 设置默认请求头
-  const headers = {
-    'Content-Type': 'application/json',
-    ...options.headers,
-  };
-  
-  // 如果有 token，添加到请求头
-  const token = localStorage.getItem('token');
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`;
-  }
-  
+const API_PREFIX = '/api'
+
+const getAuthToken = () => localStorage.getItem('access_token')
+
+
+const getStoredUserInfo = () => {
   try {
-    console.log('发送请求:', url, options);
-    const response = await fetch(url, {
-      ...options,
-      headers,
-    });
-    
-    console.log('收到响应:', response.status, response.statusText);
-    
-    // 解析响应数据
-    const data = await response.json();
-    console.log('响应数据:', data);
-    
-    // 检查响应状态
-    if (!response.ok) {
-      throw new Error(data.detail || data.message || '请求失败');
-    }
-    
-    return data;
-  } catch (error) {
-    console.error('API 请求错误:', error);
-    throw error;
+    const raw = localStorage.getItem('user_info')
+    return raw ? JSON.parse(raw) : {}
+  } catch {
+    return {}
   }
 }
 
-// 认证相关 API
+const persistUserInfo = (patch = {}) => {
+  const current = getStoredUserInfo()
+  const next = { ...current, ...patch }
+  localStorage.setItem('user_info', JSON.stringify(next))
+  return next
+}
+
+const buildQuery = (params = {}) => {
+  const query = new URLSearchParams()
+  Object.entries(params).forEach(([key, value]) => {
+    if (value === undefined || value === null || value === '') return
+    if (Array.isArray(value)) {
+      value.forEach((v) => query.append(key, String(v)))
+    } else {
+      query.append(key, String(value))
+    }
+  })
+  const str = query.toString()
+  return str ? `?${str}` : ''
+}
+
+async function request(endpoint, options = {}) {
+  const token = getAuthToken()
+  const headers = { ...(options.headers || {}) }
+  const isFormData = typeof FormData !== 'undefined' && options.body instanceof FormData
+
+  if (!isFormData && !headers['Content-Type']) {
+    headers['Content-Type'] = 'application/json'
+  }
+  if (token) {
+    headers.Authorization = `Bearer ${token}`
+  }
+
+  const response = await fetch(`${API_PREFIX}${endpoint}`, {
+    ...options,
+    headers,
+  })
+
+  const text = await response.text()
+  let data = null
+  if (text) {
+    try {
+      data = JSON.parse(text)
+    } catch {
+      data = { message: text }
+    }
+  }
+
+  if (!response.ok) {
+    throw new Error(data?.detail || data?.message || `请求失败(${response.status})`)
+  }
+
+  return data
+}
+
+export const ensureCurrentUserId = async () => {
+  const userInfo = getStoredUserInfo()
+  if (userInfo?.id) return Number(userInfo.id)
+
+  const me = await request('/auth/me')
+  if (!me?.id) {
+    throw new Error('无法从登录态获取用户ID，请重新登录')
+  }
+  persistUserInfo({
+    id: me.id,
+    username: me.username,
+    name: userInfo.name || me.username,
+    avatar: userInfo.avatar || '👤',
+  })
+  return Number(me.id)
+}
+
 export const authAPI = {
-  // 注册
-  register: async (userData) => {
-    return request('/auth/register', {
+  register: (userData) =>
+    request('/auth/register', {
       method: 'POST',
       body: JSON.stringify(userData),
-    });
-  },
-  
-  // 登录
-  login: async (credentials) => {
-    return request('/auth/login', {
+    }),
+
+  login: (credentials) =>
+    request('/auth/login', {
       method: 'POST',
       body: JSON.stringify(credentials),
-    });
-  },
-  
-  // 获取当前用户信息
-  getCurrentUser: async () => {
-    return request('/auth/me');
-  },
-};
+    }),
 
-// 聊天相关 API
-export const chatAPI = {
-  // 发送问题，获取解答
-  ask: async (message) => {
-    return request('/chat/ask', {
-      method: 'POST',
-      body: JSON.stringify({ message }),
-    });
-  },
-  
-  // 流式获取解答 (SSE)，支持图片上传
-  askStream: async (message, imageFile, onMessage, onError) => {
-    const url = `/api/chat/ask-stream`;
-    const token = localStorage.getItem('token');
-    
-    // HTML实体解码函数
-    const decodeHtmlEntities = (text) => {
-      const txt = document.createElement('textarea');
-      txt.innerHTML = text;
-      return txt.value;
-    };
-    
-    try {
-      const formData = new FormData();
-      formData.append('question', message);
-      if (imageFile) {
-        formData.append('image', imageFile);
-      }
-      
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
-        },
-        body: formData,
-      });
-      
-      if (!response.ok) {
-        throw new Error('请求失败');
-      }
-      
-      const reader = response.body.getReader();
-      let accumulatedData = '';
-      let lastUpdateTime = Date.now();
-      const updateInterval = 100; // 每100ms更新一次
-      
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) {
-          // 处理最后一批数据
-          if (accumulatedData) {
-            const decodedData = decodeHtmlEntities(accumulatedData);
-            onMessage(decodedData);
-          }
-          break;
-        }
-        
-        const chunk = new TextDecoder('utf-8').decode(value);
-        const lines = chunk.split('\n');
-        
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            const data = line.substring(6);
-            if (data) {
-              accumulatedData += data;
-              
-              // 定期更新，避免过于频繁的渲染
-              const currentTime = Date.now();
-              if (currentTime - lastUpdateTime >= updateInterval) {
-                const decodedData = decodeHtmlEntities(accumulatedData);
-                onMessage(decodedData);
-                lastUpdateTime = currentTime;
-              }
-            }
-          }
-        }
-      }
-    } catch (error) {
-      console.error('SSE 请求错误:', error);
-      onError(error);
-    }
-  },
-};
+  getCurrentUser: () => request('/auth/me'),
+}
 
-// 学生画像相关 API
 export const profileAPI = {
-  // 获取学生画像
-  getProfile: async () => {
-    return request('/profile');
+  getProfile: async (userId) => {
+    const id = userId || (await ensureCurrentUserId())
+    return request(`/profile/${buildQuery({ user_id: id })}`)
   },
-  
-  // 更新学生画像
-  updateProfile: async (profileData) => {
-    return request('/profile', {
-      method: 'PUT',
-      body: JSON.stringify(profileData),
-    });
-  },
-};
+}
 
-// 练习题相关 API
 export const exercisesAPI = {
-  // 获取推荐练习题
-  getRecommendations: async () => {
-    return request('/exercises/recommend');
+  getRecommendations: async ({ userId, limit = 5, algorithmVersion } = {}) => {
+    const id = userId || (await ensureCurrentUserId())
+    return request(`/exercises/recommend${buildQuery({ user_id: id, limit, algorithm_version: algorithmVersion })}`)
   },
-  
-  // 获取学习计划
-  getPlan: async () => {
-    return request('/exercises/plan');
-  },
-};
 
-// 上传相关 API
-export const uploadAPI = {
-  // 上传图片题目
-  uploadImage: async (imageFile) => {
-    const formData = new FormData();
-    formData.append('image', imageFile);
-    
-    return request('/upload/image', {
-      method: 'POST',
-      headers: {
-        // 不需要设置 Content-Type，浏览器会自动设置
-        ...(localStorage.getItem('token') ? { 'Authorization': `Bearer ${localStorage.getItem('token')}` } : {}),
-      },
-      body: formData,
-    });
+  submitRecommendedAnswer: async ({
+    userId,
+    questionId,
+    answer,
+    isCorrect,
+    algorithmVersion,
+    recommendationSessionId,
+  }) => {
+    const id = userId || (await ensureCurrentUserId())
+    return request(
+      `/records/recommended/${questionId}/submit${buildQuery({
+        user_id: id,
+        answer,
+        is_correct: isCorrect,
+        algorithm_version: algorithmVersion,
+        recommendation_session_id: recommendationSessionId,
+      })}`,
+      { method: 'POST' }
+    )
   },
-};
 
-// 导出默认对象
+  getMasteryDashboard: async ({ userId, trendLimit = 30 } = {}) => {
+    const id = userId || (await ensureCurrentUserId())
+    return request(`/exercises/mastery/dashboard${buildQuery({ user_id: id, trend_limit: trendLimit })}`)
+  },
+
+  getAbTestStats: ({ algorithmVersion, limit = 1000 }) =>
+    request(`/exercises/ab-test/stats${buildQuery({ algorithm_version: algorithmVersion, limit })}`),
+}
+
+export const learningToolsAPI = {
+  getMistakes: async ({ userId, mastered, onlyDue, knowledgePoint, days, limit = 100 } = {}) => {
+    const id = userId || (await ensureCurrentUserId())
+    return request(
+      `/learning-tools/mistakes${buildQuery({
+        user_id: id,
+        mastered,
+        only_due: onlyDue,
+        knowledge_point: knowledgePoint,
+        days,
+        limit,
+      })}`
+    )
+  },
+
+  getReviewReminders: async ({ userId, windowDays = 3 } = {}) => {
+    const id = userId || (await ensureCurrentUserId())
+    return request(`/learning-tools/mistakes/review-reminders${buildQuery({ user_id: id, window_days: windowDays })}`)
+  },
+
+  getFavorites: async ({ userId, folderName, limit = 50 } = {}) => {
+    const id = userId || (await ensureCurrentUserId())
+    return request(`/learning-tools/favorites${buildQuery({ user_id: id, folder_name: folderName, limit })}`)
+  },
+
+  addFavorite: async ({ userId, questionId, folderName = '默认收藏夹', note, tags = [] }) => {
+    const id = userId || (await ensureCurrentUserId())
+    return request(
+      `/learning-tools/favorites${buildQuery({
+        user_id: id,
+        question_id: questionId,
+        folder_name: folderName,
+        note,
+        tags,
+      })}`,
+      { method: 'POST' }
+    )
+  },
+
+  removeFavorite: async ({ userId, favoriteId }) => {
+    const id = userId || (await ensureCurrentUserId())
+    return request(`/learning-tools/favorites/${favoriteId}${buildQuery({ user_id: id })}`, { method: 'DELETE' })
+  },
+}
+
 export default {
   auth: authAPI,
-  chat: chatAPI,
   profile: profileAPI,
   exercises: exercisesAPI,
-  upload: uploadAPI,
-};
+  learningTools: learningToolsAPI,
+  ensureCurrentUserId,
+}

@@ -209,11 +209,13 @@ const handleRegister = async () => {
     // 保存 token 和用户信息
     localStorage.setItem('access_token', loginData.access_token)
     localStorage.setItem('user_info', JSON.stringify({
+      id: loginData?.user?.id,
       username: form.username,
       name: form.username,
       avatar: '👤',
       loginTime: new Date().toISOString()
     }))
+
     
     console.log('登录成功，准备跳转...')
     router.push('/ai-tutor')

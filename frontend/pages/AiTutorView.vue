@@ -39,7 +39,16 @@
             <span class="nav-icon">✨</span>
             <span>数列推荐</span>
           </router-link>
+          <router-link to="/exercises" class="nav-item">
+            <span class="nav-icon">📝</span>
+            <span>练习中心</span>
+          </router-link>
+          <router-link to="/profile" class="nav-item">
+            <span class="nav-icon">📊</span>
+            <span>学习画像</span>
+          </router-link>
         </div>
+
 
         <!-- 历史会话列表 -->
         <div class="history-section" v-show="!isSidebarCollapsed">

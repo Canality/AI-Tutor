@@ -102,8 +102,16 @@ export const sendQuestion = async (question, imageBase64 = null, onChunk = null)
     if (!response.ok) {
       const errorText = await response.text()
       console.error('请求失败:', response.status, errorText)
+
+      if (response.status === 401 || errorText.includes('Could not validate credentials')) {
+        localStorage.removeItem('access_token')
+        localStorage.removeItem('user_info')
+        return { answer: '登录状态已失效，请重新登录。' }
+      }
+
       return { answer: `请求失败: ${response.status} - ${errorText}` }
     }
+
 
     const reader = response.body.getReader()
     const decoder = new TextDecoder('utf-8')

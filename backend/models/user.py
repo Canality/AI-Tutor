@@ -16,3 +16,7 @@ class User(Base):
 
     learning_records = relationship("LearningRecord", back_populates="user", cascade="all, delete-orphan")
     profile = relationship("UserProfile", back_populates="user", uselist=False, cascade="all, delete-orphan")
+    ability_history = relationship("UserAbilityHistory", back_populates="user", cascade="all, delete-orphan")
+    mistake_books = relationship("MistakeBook", back_populates="user", cascade="all, delete-orphan")
+    favorites = relationship("Favorite", back_populates="user", cascade="all, delete-orphan")
+    interaction_logs = relationship("UserInteractionLog", back_populates="user", cascade="all, delete-orphan")

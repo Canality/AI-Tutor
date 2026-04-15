@@ -29,8 +29,16 @@ async def save_learning_record(
     answer: str = "",
     is_correct: Optional[bool] = None,
     source_type: Literal['recommended', 'practice', 'uploaded'] = 'recommended',
-    recommendation_algorithm_version: Optional[str] = None
+    recommendation_algorithm_version: Optional[str] = None,
+    recommendation_session_id: Optional[str] = None,
+    hint_count: int = 0,
+    time_spent: Optional[int] = None,
+    skip_reason: Optional[Literal['too_easy', 'too_hard', 'other']] = None,
+    theta_before: Optional[float] = None,
+    theta_after: Optional[float] = None,
+    mastery_updates: Optional[Dict[str, Any]] = None,
 ) -> LearningRecord:
+
     """
     保存学习记录 - 双模态存储支持
 
@@ -118,8 +126,16 @@ async def save_learning_record(
         custom_question_data=custom_question_data,
         user_answer=answer,
         is_correct=is_correct,
-        recommendation_algorithm_version=recommendation_algorithm_version
+        recommendation_session_id=recommendation_session_id,
+        recommendation_algorithm_version=recommendation_algorithm_version,
+        hint_count=max(0, hint_count or 0),
+        time_spent=time_spent,
+        skip_reason=skip_reason,
+        theta_before=theta_before,
+        theta_after=theta_after,
+        mastery_updates=mastery_updates,
     )
+
 
     db.add(record)
     await db.commit()
@@ -180,8 +196,15 @@ async def save_recommended_question_record(
     answer: str,
     is_correct: bool,
     recommendation_algorithm_version: Optional[str] = None,
-    recommendation_session_id: Optional[str] = None
+    recommendation_session_id: Optional[str] = None,
+    hint_count: int = 0,
+    time_spent: Optional[int] = None,
+    skip_reason: Optional[Literal['too_easy', 'too_hard', 'other']] = None,
+    theta_before: Optional[float] = None,
+    theta_after: Optional[float] = None,
+    mastery_updates: Optional[Dict[str, Any]] = None,
 ) -> LearningRecord:
+
     """
     保存系统推荐题目的学习记录 (模式 A 的便捷方法)
 
@@ -211,16 +234,19 @@ async def save_recommended_question_record(
         answer=answer,
         is_correct=is_correct,
         source_type='recommended',
-        recommendation_algorithm_version=recommendation_algorithm_version
+        recommendation_algorithm_version=recommendation_algorithm_version,
+        recommendation_session_id=recommendation_session_id,
+        hint_count=hint_count,
+        time_spent=time_spent,
+        skip_reason=skip_reason,
+        theta_before=theta_before,
+        theta_after=theta_after,
+        mastery_updates=mastery_updates,
     )
 
-    # 设置推荐会话 ID
-    if recommendation_session_id:
-        record.recommendation_session_id = recommendation_session_id
-        await db.commit()
-        await db.refresh(record)
 
     return record
+
 
 
 async def get_learning_history(

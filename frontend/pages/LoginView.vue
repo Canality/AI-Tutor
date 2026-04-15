@@ -124,13 +124,15 @@ const handleLogin = async () => {
     // 保存 token（关键！）
     localStorage.setItem('access_token', data.access_token)
     
-    // 保存用户信息
+    // 保存用户信息（含 user_id，便于新接口直接调用）
     localStorage.setItem('user_info', JSON.stringify({
+      id: data?.user?.id,
       username: form.username,
       name: form.username,
       avatar: '👤',
       loginTime: new Date().toISOString()
     }))
+
     
     // 如果勾选了记住我，可以存到 localStorage，否则存 sessionStorage
     if (rememberMe.value) {
