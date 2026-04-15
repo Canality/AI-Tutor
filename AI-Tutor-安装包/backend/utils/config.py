@@ -64,7 +64,7 @@ class Settings(BaseSettings):
 
     secret_key: str = os.getenv("SECRET_KEY", "1f2f5999e2c3f1bd4d7a05c0261a44df2ac407484056b9703fadbba03091de0f")
     algorithm: str = os.getenv("ALGORITHM", "HS256")
-    access_token_expire_minutes: int = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "30"))
+    access_token_expire_minutes: int = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "1440"))
 
     openai_api_key: str = os.getenv("OPENAI_API_KEY", "")
     openai_api_base: str = os.getenv("OPENAI_API_BASE", "https://api.openai.com/v1")

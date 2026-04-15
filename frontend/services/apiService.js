@@ -146,48 +146,52 @@ export const exercisesAPI = {
 }
 
 export const learningToolsAPI = {
-  getMistakes: async ({ userId, mastered, onlyDue, knowledgePoint, days, limit = 100 } = {}) => {
-    const id = userId || (await ensureCurrentUserId())
-    return request(
+  /** 获取错题本列表 */
+  getMistakes: ({ mastered, onlyDue, knowledgePoint, days, limit = 100 } = {}) =>
+    request(
       `/learning-tools/mistakes${buildQuery({
-        user_id: id,
         mastered,
         only_due: onlyDue,
         knowledge_point: knowledgePoint,
         days,
         limit,
       })}`
-    )
-  },
+    ),
 
-  getReviewReminders: async ({ userId, windowDays = 3 } = {}) => {
-    const id = userId || (await ensureCurrentUserId())
-    return request(`/learning-tools/mistakes/review-reminders${buildQuery({ user_id: id, window_days: windowDays })}`)
-  },
+  /** 获取错题本统计摘要（总数/未掌握/到期复习） */
+  getMistakeStats: () => request('/learning-tools/mistakes/stats'),
 
-  getFavorites: async ({ userId, folderName, limit = 50 } = {}) => {
-    const id = userId || (await ensureCurrentUserId())
-    return request(`/learning-tools/favorites${buildQuery({ user_id: id, folder_name: folderName, limit })}`)
-  },
+  /** 标记错题为已掌握 */
+  markMastered: (mistakeId) =>
+    request(`/learning-tools/mistakes/${mistakeId}/master`, { method: 'PATCH' }),
 
-  addFavorite: async ({ userId, questionId, folderName = '默认收藏夹', note, tags = [] }) => {
-    const id = userId || (await ensureCurrentUserId())
-    return request(
+  /** 取消已掌握标记，重新加入待复习 */
+  unmarkMastered: (mistakeId) =>
+    request(`/learning-tools/mistakes/${mistakeId}/unmaster`, { method: 'PATCH' }),
+
+  /** 获取复习提醒（到期+即将到期） */
+  getReviewReminders: ({ windowDays = 3 } = {}) =>
+    request(`/learning-tools/mistakes/review-reminders${buildQuery({ window_days: windowDays })}`),
+
+  /** 获取收藏夹列表 */
+  getFavorites: ({ folderName, limit = 50 } = {}) =>
+    request(`/learning-tools/favorites${buildQuery({ folder_name: folderName, limit })}`),
+
+  /** 新增/更新收藏 */
+  addFavorite: ({ questionId, folderName = '默认收藏夹', note, tags = [] } = {}) =>
+    request(
       `/learning-tools/favorites${buildQuery({
-        user_id: id,
         question_id: questionId,
         folder_name: folderName,
         note,
         tags,
       })}`,
       { method: 'POST' }
-    )
-  },
+    ),
 
-  removeFavorite: async ({ userId, favoriteId }) => {
-    const id = userId || (await ensureCurrentUserId())
-    return request(`/learning-tools/favorites/${favoriteId}${buildQuery({ user_id: id })}`, { method: 'DELETE' })
-  },
+  /** 删除收藏 */
+  removeFavorite: (favoriteId) =>
+    request(`/learning-tools/favorites/${favoriteId}`, { method: 'DELETE' }),
 }
 
 export const advisorAPI = {
