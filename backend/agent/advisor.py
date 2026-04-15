@@ -213,28 +213,67 @@ async def get_advisor_recommendations(
     # 加上 due_review_ids（这些可以重新推送复习）
     seen_ids_for_new = seen_ids - {int(i) for i in due_review_ids}
 
-    all_q_stmt = select(Question).where(Question.knowledge_points.isnot(None))
+    # 只取 knowledge_points 非空（非NULL且非[]）的题目
+    from sqlalchemy import func as sql_func, cast, String
+    all_q_stmt = (
+        select(Question)
+        .where(
+            Question.knowledge_points.isnot(None),
+            sql_func.json_length(Question.knowledge_points) > 0,
+        )
+    )
     all_q_result = await db.execute(all_q_stmt)
     all_questions = all_q_result.scalars().all()
 
     # --- Step 5: 新题候选打分 ---
-    explore_target = max(1, int(limit * EXPLORE_RATIO) + 1)
-    new_candidates: List[Tuple[Question, float]] = []
+    # 复习题槽位：至多占 (1-EXPLORE_RATIO) 比例，剩余全给新题
+    review_slot = min(len(due_review_ids), max(0, int(limit * (1 - EXPLORE_RATIO))))
+    new_target = limit - review_slot  # 新题需要补齐的数量
+
+    # 选择题目标数：按 2:3 比例，即 ceil(new_target * 2/5)
+    import math as _math
+    CHOICE_TYPES = {"single_choice", "multiple_choice", "choice"}
+    choice_target = _math.ceil(new_target * 2 / 5)
+    essay_target = new_target - choice_target
+
+    def _score_question(q: "Question") -> float:
+        q_topics = _normalize_topics(q.knowledge_points)
+        kp_rel = _kp_relevance(q_topics, weak_kps)
+        diff_match = _difficulty_match(theta, int(q.difficulty or 1))
+        return 0.6 * kp_rel + 0.3 * diff_match
+
+    # 把候选题按题型分入两个池，再各自按知识点/难度匹配排序
+    choice_pool: List[Tuple["Question", float]] = []
+    essay_pool:  List[Tuple["Question", float]] = []
 
     for q in all_questions:
         if q.id in seen_ids_for_new:
             continue
-        q_topics = _normalize_topics(q.knowledge_points)
-        if weak_kps and not any(t in weak_kps for t in q_topics):
-            continue  # 优先知识点相关
+        score = _score_question(q)
+        qtype = (q.question_type or "").lower()
+        if qtype in CHOICE_TYPES:
+            choice_pool.append((q, score))
+        else:
+            essay_pool.append((q, score))
 
-        kp_rel = _kp_relevance(q_topics, weak_kps)
-        diff_match = _difficulty_match(theta, int(q.difficulty or 1))
-        score = 0.6 * kp_rel + 0.3 * diff_match + 0.1 * 0.0  # context_similarity 暂为 0
-        new_candidates.append((q, score))
+    choice_pool.sort(key=lambda x: x[1], reverse=True)
+    essay_pool.sort(key=lambda x: x[1], reverse=True)
 
-    new_candidates.sort(key=lambda x: x[1], reverse=True)
-    new_candidates = new_candidates[:explore_target]
+    # 先从各自池取目标数量，不足时互补
+    chosen_choices = choice_pool[:choice_target]
+    chosen_essays  = essay_pool[:essay_target]
+
+    shortage_choice = choice_target - len(chosen_choices)
+    shortage_essay  = essay_target  - len(chosen_essays)
+
+    # 选择题不够，用大题补；大题不够，用选择题补
+    if shortage_choice > 0:
+        chosen_essays += essay_pool[essay_target:essay_target + shortage_choice]
+    if shortage_essay > 0:
+        chosen_choices += choice_pool[choice_target:choice_target + shortage_essay]
+
+    # 合并新题候选，选择题在前（答题模式体验更好）
+    new_candidates = chosen_choices + chosen_essays
 
     # --- Step 6: 复习题填充 ---
     review_questions: List[Question] = []
@@ -243,10 +282,13 @@ async def get_advisor_recommendations(
         review_result = await db.execute(review_stmt)
         review_questions = review_result.scalars().all()
 
-    # --- Step 7: 合并（复习优先） ---
-    review_slot = max(0, limit - len(new_candidates))
+    # --- Step 7: 合并（复习优先），确保总数等于 limit ---
     final_review = review_questions[:review_slot]
     final_new = new_candidates[:limit - len(final_review)]
+    # 若复习题不足填满 review_slot，用新题补齐
+    if len(final_review) < review_slot:
+        extra_need = review_slot - len(final_review)
+        final_new = new_candidates[:new_target + extra_need]
 
     # --- Step 8: 判断 Advisor 模式 ---
     avg_mastery = float(profile_dict.get("avg_mastery") or 0.5)
@@ -392,6 +434,7 @@ def _build_recommendation_item(
         "difficulty": q.difficulty,
         "knowledge_points": q_topics,
         "question_type": q.question_type,
+        "standard_answer": q.standard_answer,   # 选择题前端判题用
         "is_review": is_review,
         "advisor_mode": advisor_mode,
         "scores": {

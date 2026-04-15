@@ -220,11 +220,38 @@ export const advisorAPI = {
   redisHealth: () => request('/advisor/redis/health'),
 }
 
+export const chatAPI = {
+  /** 大模型批改大题（非流式） */
+  gradeAnswer: ({ questionContent, standardAnswer, userAnswer, knowledgePoints } = {}) =>
+    request('/chat/grade-answer', {
+      method: 'POST',
+      body: JSON.stringify({
+        question_content: questionContent,
+        standard_answer: standardAnswer ?? null,
+        user_answer: userAnswer,
+        knowledge_points: knowledgePoints ?? [],
+      }),
+    }),
+
+  /** 答错后诊断：AI 指出问题所在和正确思路 */
+  diagnose: ({ questionContent, standardAnswer, userAnswer, knowledgePoints } = {}) =>
+    request('/chat/diagnose', {
+      method: 'POST',
+      body: JSON.stringify({
+        question_content: questionContent,
+        standard_answer: standardAnswer ?? null,
+        user_answer: userAnswer,
+        knowledge_points: knowledgePoints ?? [],
+      }),
+    }),
+}
+
 export default {
   auth: authAPI,
   profile: profileAPI,
   exercises: exercisesAPI,
   learningTools: learningToolsAPI,
   advisor: advisorAPI,
+  chat: chatAPI,
   ensureCurrentUserId,
 }

@@ -166,3 +166,121 @@ async def ask_stream(
     except Exception as e:
         logger.error(f"Tutor service error: {e}")
         raise HTTPException(status_code=500, detail="Tutor service error")
+
+
+# ---------------------------------------------------------------------------
+# 大题 AI 批改接口（非流式，返回 JSON）
+# ---------------------------------------------------------------------------
+
+from pydantic import BaseModel as PydanticModel
+
+class GradeAnswerRequest(PydanticModel):
+    question_content: str
+    standard_answer: Optional[str] = None
+    user_answer: str
+    knowledge_points: Optional[list] = None
+
+
+@router.post("/grade-answer")
+async def grade_answer(
+    payload: GradeAnswerRequest,
+    current_user: User = Depends(get_current_user),
+):
+    """
+    使用大模型批改主观题/大题。
+    返回：{ is_correct: bool, score: float, feedback: str }
+    """
+    try:
+        kp_str = "、".join(payload.knowledge_points) if payload.knowledge_points else "数列与不等式"
+        std_hint = f"\n【参考答案】{payload.standard_answer}" if payload.standard_answer else ""
+
+        prompt = (
+            f"你是一位高中数学老师，请批改以下学生作答。\n\n"
+            f"【题目】{payload.question_content}\n"
+            f"【知识点】{kp_str}"
+            f"{std_hint}\n\n"
+            f"【学生答案】{payload.user_answer}\n\n"
+            "请按以下格式严格回复（不要输出其他内容）：\n"
+            "CORRECT: true 或 false\n"
+            "SCORE: 0到100之间的整数\n"
+            "FEEDBACK: （一段简洁的批改说明，指出对错原因、关键步骤是否正确，100字以内）"
+        )
+
+        from agent.instructor import instructor_agent
+        full_text = ""
+        async for chunk in instructor_agent.llm.astream(prompt):
+            full_text += chunk.content
+
+        # 解析结构化输出
+        import re
+        is_correct = False
+        score = 0
+        feedback = full_text.strip()
+
+        m_correct = re.search(r"CORRECT:\s*(true|false)", full_text, re.IGNORECASE)
+        m_score   = re.search(r"SCORE:\s*(\d+)", full_text)
+        m_fb      = re.search(r"FEEDBACK:\s*(.+)", full_text, re.DOTALL)
+
+        if m_correct:
+            is_correct = m_correct.group(1).lower() == "true"
+        if m_score:
+            score = min(100, max(0, int(m_score.group(1))))
+        if m_fb:
+            feedback = m_fb.group(1).strip()
+
+        logger.info(
+            f"[GradeAnswer] uid={current_user.id} correct={is_correct} score={score}"
+        )
+        return {"is_correct": is_correct, "score": score, "feedback": feedback}
+
+    except Exception as e:
+        logger.error(f"grade_answer error: {e}")
+        raise HTTPException(status_code=500, detail=f"批改失败: {e}")
+
+
+# ---------------------------------------------------------------------------
+# 答错后诊断接口：指出学生问题所在 + 正确解题思路
+# ---------------------------------------------------------------------------
+
+class DiagnoseRequest(PydanticModel):
+    question_content: str
+    standard_answer: Optional[str] = None
+    user_answer: str          # 学生作答（选择题填选项字母，大题填解题过程）
+    knowledge_points: Optional[list] = None
+
+
+@router.post("/diagnose")
+async def diagnose_answer(
+    payload: DiagnoseRequest,
+    current_user: User = Depends(get_current_user),
+):
+    """
+    答错后调用，AI 指出学生的具体错误并给出正确解题思路。
+    返回：{ diagnosis: str }
+    """
+    try:
+        kp_str = "、".join(payload.knowledge_points) if payload.knowledge_points else "数列与不等式"
+        std_hint = f"\n【参考答案/正确选项】{payload.standard_answer}" if payload.standard_answer else ""
+
+        prompt = (
+            f"你是高中数学老师，学生在下面这道题中答错了，请简要指出：\n"
+            f"1. 学生最可能犯了什么错误（概念误解、计算错误、解题思路偏差等）\n"
+            f"2. 正确的解题思路/关键步骤\n\n"
+            f"【题目】{payload.question_content}\n"
+            f"【知识点】{kp_str}"
+            f"{std_hint}\n"
+            f"【学生作答】{payload.user_answer}\n\n"
+            f"请用3-5句话简洁回答，直接给出分析，不要重复题目内容。"
+        )
+
+        from agent.instructor import instructor_agent
+        full_text = ""
+        async for chunk in instructor_agent.llm.astream(prompt):
+            full_text += chunk.content
+
+        logger.info(f"[Diagnose] uid={current_user.id} diagnosis generated")
+        return {"diagnosis": full_text.strip()}
+
+    except Exception as e:
+        logger.error(f"diagnose_answer error: {e}")
+        raise HTTPException(status_code=500, detail=f"诊断失败: {e}")

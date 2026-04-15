@@ -103,65 +103,150 @@
           <button class="primary-btn" @click="initAndLoad">初始化画像并推荐</button>
         </div>
 
-        <!-- 推荐题目列表 -->
-        <div v-else class="problem-list">
-          <div
-            v-for="(item, index) in recommendations"
-            :key="item.id"
-            class="problem-card"
-            :class="{ 'is-review': item.is_review, 'submitted': submittedSet.has(item.id) }"
-          >
-            <!-- 卡片头 -->
-            <div class="card-header">
-              <div class="card-num">#{{ index + 1 }}</div>
-              <div class="card-badges">
-                <span v-if="item.is_review" class="badge review">复习</span>
-                <span class="badge difficulty" :class="diffClass(item.difficulty)">
-                  难度 {{ item.difficulty }}
-                </span>
-                <span class="badge tone" :class="toneClass(item.tone)">{{ item.tone }}</span>
-              </div>
-              <div class="card-score">综合 {{ item.scores?.final_score ?? '-' }}</div>
-            </div>
-
-            <!-- 题目内容 -->
-            <div class="card-content">{{ item.content }}</div>
-
-            <!-- 知识点 -->
-            <div class="card-kps">
-              <span v-for="kp in (item.knowledge_points || [])" :key="kp" class="kp-tag">{{ kp }}</span>
-            </div>
-
-            <!-- 推荐理由 -->
-            <div class="card-reason">💡 {{ item.recommendation_reason }}</div>
-
-            <!-- 答案输入 + 操作按钮 -->
-            <div class="card-actions" v-if="!submittedSet.has(item.id)">
-              <input
-                v-model="answerMap[item.id]"
-                class="answer-input"
-                placeholder="输入思路或答案（可选）"
-                @keyup.enter="submitAnswer(item, true)"
-              />
-              <div class="btn-group">
-                <button class="act-btn correct" @click="submitAnswer(item, true)">✔ 答对了</button>
-                <button class="act-btn wrong" @click="submitAnswer(item, false)">✘ 答错了</button>
-                <button class="act-btn skip-easy" @click="skipQuestion(item, 'too_easy')">⏩ 太简单</button>
-                <button class="act-btn skip-hard" @click="skipQuestion(item, 'too_hard')">⏭ 太难了</button>
-              </div>
-            </div>
-
-            <!-- 已提交状态 -->
-            <div class="submitted-badge" v-else>
-              <span>{{ submittedResults[item.id] }}</span>
-            </div>
+        <!-- ===== 答题模式：进度条 ===== -->
+        <div v-if="!loading && recommendations.length > 0" class="quiz-progress">
+          <div class="qp-info">
+            <span class="qp-cur">第 {{ currentIndex + 1 }} 题</span>
+            <span class="qp-total">/ {{ recommendations.length }}</span>
+            <span class="qp-stats">
+              ✅ {{ correctCount }} &nbsp; ❌ {{ wrongCount }}
+            </span>
+          </div>
+          <div class="qp-bar-bg">
+            <div class="qp-bar-fill" :style="{ width: progressPct + '%' }"></div>
           </div>
         </div>
 
-        <!-- 全部完成提示 -->
-        <div v-if="!loading && recommendations.length > 0 && submittedSet.size === recommendations.length" class="all-done">
-          <p>🎉 这批题目全部完成！</p>
-          <button class="primary-btn" @click="loadRecommendations">继续推荐下一批</button>
+        <!-- ===== 答题模式：当前题卡片 ===== -->
+        <div v-if="!loading && currentQ" class="problem-card quiz-card"
+             :class="{ 'is-review': currentQ.is_review }">
+
+          <!-- 卡片头 -->
+          <div class="card-header">
+            <div class="card-num">#{{ currentIndex + 1 }}</div>
+            <div class="card-badges">
+              <span v-if="currentQ.is_review" class="badge review">复习</span>
+              <span class="badge type-badge">
+                {{ isChoice(currentQ) ? '选择题' : '解答题' }}
+              </span>
+              <span class="badge difficulty" :class="diffClass(currentQ.difficulty)">
+                难度 {{ currentQ.difficulty }}
+              </span>
+            </div>
+            <div class="card-score">{{ currentQ.recommendation_reason }}</div>
+          </div>
+
+          <!-- 题目内容 -->
+          <div class="card-content" v-html="renderMath(currentQ.content)"></div>
+
+          <!-- 知识点 -->
+          <div class="card-kps">
+            <span v-for="kp in (currentQ.knowledge_points || [])" :key="kp" class="kp-tag">{{ kp }}</span>
+          </div>
+
+          <!-- ===== 答题区：未提交 ===== -->
+          <template v-if="!currentResult">
+
+            <!-- 选择题 -->
+            <div v-if="isChoice(currentQ)" class="card-actions">
+              <div class="choice-options">
+                <button
+                  v-for="opt in parseChoices(currentQ.content)"
+                  :key="opt.key"
+                  class="choice-btn"
+                  :class="{ selected: selectedChoice[currentQ.id] === opt.key }"
+                  @click="selectChoice(currentQ, opt.key)"
+                >
+                  <span class="choice-key">{{ opt.key }}</span>
+                  <span class="choice-text" v-html="renderMath(opt.text)"></span>
+                </button>
+              </div>
+              <div class="btn-group mt-8">
+                <button
+                  class="act-btn confirm-btn"
+                  :disabled="!selectedChoice[currentQ.id]"
+                  @click="submitChoiceAnswer(currentQ)"
+                >确认作答</button>
+                <button class="act-btn skip-easy" @click="skipQuestion(currentQ, 'too_easy')">⏩ 太简单，跳过</button>
+                <button class="act-btn skip-hard" @click="skipQuestion(currentQ, 'too_hard')">⏭ 太难了，跳过</button>
+              </div>
+            </div>
+
+            <!-- 大题 -->
+            <div v-else class="card-actions">
+              <textarea
+                v-model="answerMap[currentQ.id]"
+                class="answer-textarea"
+                placeholder="请写出你的解题过程和答案…（提交后将由AI批改）"
+                rows="5"
+              ></textarea>
+              <div class="btn-group">
+                <button
+                  class="act-btn ai-grade"
+                  :disabled="gradingSet.has(currentQ.id) || !answerMap[currentQ.id]"
+                  @click="submitEssayAnswer(currentQ)"
+                >
+                  <span v-if="gradingSet.has(currentQ.id)">⏳ AI批改中…</span>
+                  <span v-else>🤖 提交AI批改</span>
+                </button>
+                <button class="act-btn skip-easy" @click="skipQuestion(currentQ, 'too_easy')">⏩ 太简单，跳过</button>
+                <button class="act-btn skip-hard" @click="skipQuestion(currentQ, 'too_hard')">⏭ 太难了，跳过</button>
+              </div>
+            </div>
+          </template>
+
+          <!-- ===== 结果区：已提交 ===== -->
+          <template v-else>
+            <!-- 答对 -->
+            <div v-if="currentResult.isCorrect" class="result-correct">
+              <div class="result-icon">🎉</div>
+              <div class="result-correct-msg">答对了！</div>
+              <div v-if="currentResult.feedback" class="result-detail"
+                   v-html="renderMath(currentResult.feedback)"></div>
+              <button class="act-btn next-btn" @click="goNext">
+                {{ isLast ? '查看本轮总结' : '下一题 →' }}
+              </button>
+            </div>
+
+            <!-- 答错 -->
+            <div v-else class="result-wrong">
+              <div class="result-icon">😕</div>
+              <div class="result-wrong-msg">
+                <span v-if="currentResult.chosenKey">你选了 {{ currentResult.chosenKey }}，</span>答错了
+                <span v-if="currentResult.correctKey">（正确答案：{{ currentResult.correctKey }}）</span>
+              </div>
+
+              <!-- 解析 -->
+              <div v-if="currentResult.feedback" class="analysis-card">
+                <div class="analysis-title">📖 AI 解析</div>
+                <div class="analysis-body" v-html="renderMath(currentResult.feedback)"></div>
+              </div>
+
+              <!-- AI 指出问题 -->
+              <div v-if="currentResult.diagnosis" class="diagnosis-card">
+                <div class="analysis-title">🔍 问题所在</div>
+                <div class="analysis-body" v-html="renderMath(currentResult.diagnosis)"></div>
+              </div>
+              <div v-else-if="diagnosing" class="diagnosis-loading">⏳ AI 正在分析你的问题…</div>
+
+              <button class="act-btn next-btn wrong-next" @click="goNext">
+                {{ isLast ? '查看本轮总结' : '下一题 →' }}
+              </button>
+            </div>
+          </template>
+        </div>
+
+        <!-- ===== 全部完成总结 ===== -->
+        <div v-if="!loading && recommendations.length > 0 && allDone" class="all-done">
+          <div class="done-emoji">🏆</div>
+          <p class="done-title">本轮完成！</p>
+          <div class="done-stats">
+            <span class="done-stat correct">✅ 答对 {{ correctCount }} 题</span>
+            <span class="done-stat wrong">❌ 答错 {{ wrongCount }} 题</span>
+            <span class="done-stat skip">⏭ 跳过 {{ skipCount }} 题</span>
+          </div>
+          <div class="done-accuracy">正确率 {{ doneAccuracy }}%</div>
+          <button class="primary-btn mt-16" @click="loadRecommendations">继续下一批</button>
         </div>
       </div>
     </main>
@@ -171,7 +256,8 @@
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { advisorAPI } from '../services/apiService'
+import { advisorAPI, chatAPI } from '../services/apiService'
+import katex from 'katex'
 
 const router = useRouter()
 
@@ -202,8 +288,32 @@ const limit = ref(5)
 
 const recommendations = ref([])
 const answerMap = reactive({})
+const selectedChoice = reactive({})   // 选择题当前选中项
 const submittedSet = ref(new Set())
-const submittedResults = reactive({})
+const gradingSet = ref(new Set())     // 正在 AI 批改中的题目 id
+
+// ===== 答题模式状态 =====
+const currentIndex = ref(0)           // 当前题目索引
+const currentResult = ref(null)       // { isCorrect, feedback, chosenKey, correctKey, diagnosis }
+const diagnosing = ref(false)         // 正在 AI 分析问题所在
+
+const currentQ = computed(() => recommendations.value[currentIndex.value] ?? null)
+const isLast = computed(() => currentIndex.value >= recommendations.value.length - 1)
+const allDone = computed(() => currentIndex.value >= recommendations.value.length)
+
+const correctCount = ref(0)
+const wrongCount = ref(0)
+const skipCount = ref(0)
+
+const progressPct = computed(() => {
+  if (!recommendations.value.length) return 0
+  return Math.round((currentIndex.value / recommendations.value.length) * 100)
+})
+const doneAccuracy = computed(() => {
+  const total = correctCount.value + wrongCount.value
+  if (!total) return 0
+  return Math.round(correctCount.value / total * 100)
+})
 
 const profileSnap = reactive({
   theta: null,
@@ -235,69 +345,207 @@ const pct = (v) => v != null ? (v * 100).toFixed(0) + '%' : '-'
 const diffClass = (d) => d <= 1 ? 'easy' : d <= 2 ? 'medium' : d <= 3 ? 'hard' : 'expert'
 const toneClass = (t) => ({ '鼓励型': 'encourage', '激励型': 'motivate', '中性': 'neutral' }[t] || 'neutral')
 
-// 检查 Redis
-const checkRedis = async () => {
-  try {
-    const res = await advisorAPI.redisHealth()
-    redisOk.value = res?.redis_available ?? false
-  } catch {
-    redisOk.value = false
-  }
+// -------- 数学公式渲染 --------
+const renderMath = (text) => {
+  if (!text) return ''
+  let content = String(text)
+  const mathBlocks = []
+
+  // 兼容 \[...\] 和 \(...\) 语法
+  content = content
+    .replace(/\\\[([\s\S]*?)\\\]/g, (_, f) => `$$${f}$$`)
+    .replace(/\\\(([\s\S]*?)\\\)/g, (_, f) => `$${f}$`)
+
+  // 块级公式 $$...$$
+  content = content.replace(/\$\$([\s\S]*?)\$\$/g, (_, formula) => {
+    try {
+      const html = katex.renderToString(formula.trim(), { throwOnError: false, displayMode: true })
+      const token = `@@MATH${mathBlocks.length}@@`
+      mathBlocks.push(html)
+      return token
+    } catch { return `<span class="latex-error">${formula}</span>` }
+  })
+
+  // 行内公式 $...$
+  content = content.replace(/\$([^\n$]+?)\$/g, (_, formula) => {
+    try {
+      const html = katex.renderToString(formula.trim(), { throwOnError: false, displayMode: false })
+      const token = `@@MATH${mathBlocks.length}@@`
+      mathBlocks.push(html)
+      return token
+    } catch { return `<span class="latex-error">${formula}</span>` }
+  })
+
+  // 普通文本转义（避免 XSS），再恢复 token
+  content = content
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/\n/g, '<br>')
+  content = content.replace(/@@MATH(\d+)@@/g, (_, i) => mathBlocks[Number(i)] || '')
+  return content
 }
 
-// 加载推荐
-const loadRecommendations = async () => {
-  loading.value = true
-  error.value = ''
-  submittedSet.value = new Set()
+// -------- 题型判断 --------
+const isChoice = (item) =>
+  ['single_choice', 'multiple_choice', 'choice'].includes((item.question_type || '').toLowerCase())
+
+/**
+ * 从题目 content 里解析选项，支持：
+ *   "A. xxx  B. xxx  C. xxx  D. xxx"
+ *   "A）xxx\nB）xxx"
+ *   "（A）xxx  （B）xxx"
+ */
+const parseChoices = (content) => {
+  if (!content) return []
+  // 先把题干与选项分开：找到第一个 A. / A） / （A） 的位置
+  const splitReg = /(?:^|\n)\s*[（(]?A[）)．.\s]/
+  const splitIdx = content.search(splitReg)
+  const optionStr = splitIdx >= 0 ? content.slice(splitIdx) : content
+
+  // 按 B/C/D 边界切割（允许选项文字含任何字符，包括公式）
+  const parts = optionStr.split(/\n?\s*[（(]?([B-D])[）)．.\s]/)
+  const opts = []
+
+  if (parts.length >= 3) {
+    // parts[0] = A 选项内容，parts[1] = 'B', parts[2] = B 选项内容, ...
+    const firstMatch = optionStr.match(/[（(]?A[）)．.\s]\s*(.+?)(?=\s*[（(]?B[）)．.\s]|$)/s)
+    if (firstMatch) opts.push({ key: 'A', text: firstMatch[1].trim() })
+    for (let i = 1; i + 1 < parts.length; i += 2) {
+      opts.push({ key: parts[i], text: parts[i + 1].trim() })
+    }
+  }
+
+  // fallback：按行解析
+  if (opts.length < 2) {
+    const lines = content.split('\n')
+    for (const line of lines) {
+      const m = line.trim().match(/^[（(]?([A-D])[）)．.\s]\s*(.+)/)
+      if (m) opts.push({ key: m[1], text: m[2].trim() })
+    }
+  }
+  return opts
+}
+
+const selectChoice = (item, key) => {
+  selectedChoice[item.id] = key
+}
+
+// -------- 选择题提交 --------
+const submitChoiceAnswer = async (item) => {
+  const chosen = selectedChoice[item.id]
+  if (!chosen) return
+
+  const stdRaw = (item.standard_answer || '').toUpperCase().replace(/[,，\s]/g, '')
+  let isCorrect
+  if (stdRaw) {
+    isCorrect = stdRaw.includes(chosen)
+  } else {
+    isCorrect = confirm(`你选了 ${chosen}，你认为答对了吗？\n\n确定=答对，取消=答错`)
+  }
+
+  currentResult.value = {
+    isCorrect,
+    chosenKey: chosen,
+    correctKey: stdRaw || null,
+    feedback: isCorrect
+      ? `正确答案是 ${stdRaw}，你答对了！`
+      : `正确答案是 ${stdRaw || '未知'}。`,
+    diagnosis: null,
+  }
+
+  if (isCorrect) {
+    correctCount.value++
+  } else {
+    wrongCount.value++
+    // 答错：异步请求 AI 给出解析和问题诊断
+    _requestDiagnosis(item, chosen, null)
+  }
+
+  await _doFeedback(item, isCorrect)
+}
+
+// -------- 大题 AI 批改提交 --------
+const submitEssayAnswer = async (item) => {
+  const userAnswer = (answerMap[item.id] || '').trim()
+  if (!userAnswer) return
+
+  gradingSet.value = new Set([...gradingSet.value, item.id])
   try {
-    const res = await advisorAPI.getRecommendations({ limit: limit.value })
-    const data = res?.data || {}
-    recommendations.value = data.recommendations || []
-    advisorMode.value = data.advisor_mode || ''
-    advisorInstruction.value = data.advisor_instruction || null
-    const snap = data.profile_snapshot || {}
-    Object.assign(profileSnap, snap)
+    const res = await chatAPI.gradeAnswer({
+      questionContent: item.content,
+      standardAnswer: item.standard_answer || null,
+      userAnswer,
+      knowledgePoints: item.knowledge_points || [],
+    })
+
+    const isCorrect = !!res?.is_correct
+    const score = res?.score ?? (isCorrect ? 100 : 0)
+    const feedback = res?.feedback || (isCorrect ? '解答正确！' : '解答有误。')
+
+    currentResult.value = {
+      isCorrect,
+      chosenKey: null,
+      correctKey: null,
+      feedback: `${isCorrect ? '✅' : '❌'} 得分 ${score}：${feedback}`,
+      diagnosis: null,
+    }
+
+    if (isCorrect) {
+      correctCount.value++
+    } else {
+      wrongCount.value++
+      _requestDiagnosis(item, null, userAnswer)
+    }
+
+    await _doFeedback(item, isCorrect)
   } catch (e) {
-    error.value = e?.message || '获取推荐失败，请重试'
-    recommendations.value = []
+    alert(e?.message || 'AI批改失败，请重试')
   } finally {
-    loading.value = false
+    const s = new Set(gradingSet.value)
+    s.delete(item.id)
+    gradingSet.value = s
   }
 }
 
-// 初始化画像再推荐
-const initAndLoad = async () => {
-  loading.value = true
-  error.value = ''
+// -------- 答错时向 AI 请求诊断 --------
+const _requestDiagnosis = async (item, chosenKey, userAnswer) => {
+  diagnosing.value = true
   try {
-    await advisorAPI.initProfile()
-    await loadRecommendations()
-  } catch (e) {
-    error.value = e?.message || '初始化失败'
-    loading.value = false
+    const userInput = chosenKey ? `选了 ${chosenKey}` : (userAnswer || '')
+    const res = await chatAPI.diagnose({
+      questionContent: item.content,
+      standardAnswer: item.standard_answer || null,
+      userAnswer: userInput,
+      knowledgePoints: item.knowledge_points || [],
+    })
+    const text = res?.diagnosis || ''
+    if (currentResult.value && text) {
+      currentResult.value = { ...currentResult.value, diagnosis: text }
+    }
+  } catch { /* 诊断失败不阻塞 */ } finally {
+    diagnosing.value = false
   }
 }
 
-// 提交答案
-const submitAnswer = async (item, isCorrect) => {
+// -------- 下一题 --------
+const goNext = () => {
+  currentResult.value = null
+  currentIndex.value++
+}
+
+// -------- 公共：把结果写入画像 --------
+const _doFeedback = async (item, isCorrect) => {
   try {
-    const startTs = Date.now()
-    const res = await advisorAPI.submitFeedback({
+    await advisorAPI.submitFeedback({
       questionId: item.id,
       isCorrect,
       hintCount: 0,
-      timeSpent: Math.round((Date.now() - startTs) / 1000),
+      timeSpent: null,
       algorithmVersion: 'advisor-v1',
       recommendationSessionId: `web-${Date.now()}`,
     })
     submittedSet.value = new Set([...submittedSet.value, item.id])
-    const action = res?.data?.advisor_action || ''
-    const label = isCorrect ? '✅ 答对' : '❌ 答错'
-    const actionMsg = action === 'escalate' ? ' · 准备升级难度' : action === 'deescalate' ? ' · 准备降低难度' : ''
-    submittedResults[item.id] = label + actionMsg
 
-    // 若全部完成，顺手刷新画像快照
+    // 若全部完成，刷新画像快照
     if (submittedSet.value.size === recommendations.value.length) {
       try {
         const prof = await advisorAPI.getProfile()
@@ -316,22 +564,77 @@ const submitAnswer = async (item, isCorrect) => {
   }
 }
 
-// 跳过
+// -------- 跳过 --------
 const skipQuestion = async (item, skipReason) => {
   try {
-    const res = await advisorAPI.submitFeedback({
+    await advisorAPI.submitFeedback({
       questionId: item.id,
       isCorrect: skipReason === 'too_easy',
       skipReason,
       algorithmVersion: 'advisor-v1',
     })
     submittedSet.value = new Set([...submittedSet.value, item.id])
-    const label = skipReason === 'too_easy' ? '⏩ 太简单，已跳过' : '⏭ 太难了，已记录'
-    submittedResults[item.id] = label
+    skipCount.value++
+    currentResult.value = null
+    currentIndex.value++
   } catch (e) {
     alert(e?.message || '跳过提交失败')
   }
 }
+
+// -------- 检查 Redis --------
+const checkRedis = async () => {
+  try {
+    const res = await advisorAPI.redisHealth()
+    redisOk.value = res?.redis_available ?? false
+  } catch {
+    redisOk.value = false
+  }
+}
+
+// -------- 加载推荐 --------
+const loadRecommendations = async () => {
+  loading.value = true
+  error.value = ''
+  submittedSet.value = new Set()
+  // 重置答题模式
+  currentIndex.value = 0
+  currentResult.value = null
+  diagnosing.value = false
+  correctCount.value = 0
+  wrongCount.value = 0
+  skipCount.value = 0
+  try {
+    const res = await advisorAPI.getRecommendations({ limit: limit.value })
+    const data = res?.data || {}
+    recommendations.value = data.recommendations || []
+    advisorMode.value = data.advisor_mode || ''
+    advisorInstruction.value = data.advisor_instruction || null
+    const snap = data.profile_snapshot || {}
+    Object.assign(profileSnap, snap)
+  } catch (e) {
+    error.value = e?.message || '获取推荐失败，请重试'
+    recommendations.value = []
+  } finally {
+    loading.value = false
+  }
+}
+
+// -------- 初始化画像再推荐 --------
+const initAndLoad = async () => {
+  loading.value = true
+  error.value = ''
+  try {
+    await advisorAPI.initProfile()
+    await loadRecommendations()
+  } catch (e) {
+    error.value = e?.message || '初始化失败'
+    loading.value = false
+  }
+}
+
+// 用户编辑画像弹窗
+const showEditProfile = ref(false)
 
 onMounted(async () => {
   loadUserInfo()
@@ -435,51 +738,97 @@ onMounted(async () => {
 .primary-btn { padding: 12px 28px; background: #0071e3; color: white; border: none; border-radius: 12px; font-size: 15px; font-weight: 600; cursor: pointer; transition: 0.2s; }
 .primary-btn:hover { background: #005bb5; }
 
-/* ====== 题目卡片 ====== */
-.problem-list { display: flex; flex-direction: column; gap: 16px; }
-.problem-card { background: white; border-radius: 18px; padding: 22px; border: 1.5px solid #e5e5e5; transition: 0.25s; }
-.problem-card:hover { border-color: #0071e3; box-shadow: 0 4px 20px rgba(0,113,227,.1); }
-.problem-card.is-review { border-color: #ff9800; background: #fffdf5; }
-.problem-card.submitted { opacity: 0.72; }
+/* ====== 答题进度条 ====== */
+.quiz-progress { margin-bottom: 18px; }
+.qp-info { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.qp-cur { font-size: 18px; font-weight: 700; color: #1d1d1f; }
+.qp-total { font-size: 14px; color: #86868b; }
+.qp-stats { margin-left: auto; font-size: 13px; color: #555; }
+.qp-bar-bg { width: 100%; height: 8px; background: #e0e0e0; border-radius: 999px; overflow: hidden; }
+.qp-bar-fill { height: 100%; background: linear-gradient(90deg, #0071e3, #34c759); border-radius: 999px; transition: width 0.4s ease; }
 
-.card-header { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
-.card-num { width: 32px; height: 32px; background: #f0f7ff; color: #0071e3; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 14px; flex-shrink: 0; }
+/* ====== 题目卡片 ====== */
+.quiz-card { background: white; border-radius: 18px; padding: 28px; border: 1.5px solid #e5e5e5; box-shadow: 0 4px 24px rgba(0,0,0,.06); }
+.quiz-card.is-review { border-color: #ff9800; background: #fffdf5; }
+
+.card-header { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
+.card-num { width: 34px; height: 34px; background: #f0f7ff; color: #0071e3; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 14px; flex-shrink: 0; }
 .card-badges { display: flex; gap: 6px; flex-wrap: wrap; flex: 1; }
 .badge { padding: 3px 9px; border-radius: 999px; font-size: 11px; font-weight: 600; }
 .badge.review { background: #fff3e0; color: #e65100; }
+.badge.type-badge { background: #e8f5e9; color: #2e7d32; }
 .badge.difficulty.easy { background: #e8f5e9; color: #2e7d32; }
 .badge.difficulty.medium { background: #e3f2fd; color: #1565c0; }
 .badge.difficulty.hard { background: #fff8e1; color: #f57f17; }
 .badge.difficulty.expert { background: #fce4ec; color: #ad1457; }
-.badge.tone.encourage { background: #e8f5e9; color: #2e7d32; }
-.badge.tone.motivate { background: #e3f2fd; color: #1565c0; }
-.badge.tone.neutral { background: #f3f4f6; color: #555; }
-.card-score { font-size: 12px; color: #aaa; flex-shrink: 0; }
+.card-score { font-size: 12px; color: #86868b; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-.card-content { font-size: 15px; color: #1d1d1f; line-height: 1.7; margin-bottom: 12px; word-break: break-word; }
-.card-kps { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+.card-content { font-size: 16px; color: #1d1d1f; line-height: 1.8; margin-bottom: 14px; word-break: break-word; }
+.card-content .katex-display { margin: 10px 0; overflow-x: auto; }
+.card-content .katex { font-size: 1.08em; }
+.latex-error { color: #c0392b; font-style: italic; }
+.card-kps { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 16px; }
 .kp-tag { padding: 3px 9px; background: #f5f5f7; border-radius: 6px; font-size: 12px; color: #555; }
-.card-reason { font-size: 13px; color: #0071e3; background: #f0f7ff; padding: 8px 12px; border-radius: 8px; margin-bottom: 14px; line-height: 1.6; }
 
+/* ====== 答题区 ====== */
 .card-actions { display: flex; flex-direction: column; gap: 10px; }
-.answer-input { width: 100%; padding: 10px 14px; border: 1px solid #d0d7e2; border-radius: 10px; font-size: 14px; outline: none; transition: 0.2s; }
-.answer-input:focus { border-color: #0071e3; box-shadow: 0 0 0 3px rgba(0,113,227,.15); }
 .btn-group { display: flex; flex-wrap: wrap; gap: 8px; }
-.act-btn { padding: 8px 16px; border: none; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer; transition: 0.2s; }
-.act-btn.correct { background: #e8f5e9; color: #2e7d32; }
-.act-btn.correct:hover { background: #c8e6c9; }
-.act-btn.wrong { background: #fce4ec; color: #ad1457; }
-.act-btn.wrong:hover { background: #f8bbd0; }
-.act-btn.skip-easy { background: #e8eaf6; color: #3949ab; }
+.act-btn { padding: 10px 20px; border: none; border-radius: 10px; font-size: 14px; font-weight: 600; cursor: pointer; transition: 0.2s; }
+.confirm-btn { background: #0071e3; color: white; }
+.confirm-btn:hover:not(:disabled) { background: #005bb5; }
+.confirm-btn:disabled { background: #aac7f0; cursor: not-allowed; }
+.act-btn.skip-easy { background: #e8eaf6; color: #3949ab; font-size: 13px; padding: 8px 14px; }
 .act-btn.skip-easy:hover { background: #c5cae9; }
-.act-btn.skip-hard { background: #f3e5f5; color: #6a1b9a; }
+.act-btn.skip-hard { background: #f3e5f5; color: #6a1b9a; font-size: 13px; padding: 8px 14px; }
 .act-btn.skip-hard:hover { background: #e1bee7; }
+.mt-8 { margin-top: 8px; }
 
-.submitted-badge { padding: 10px 14px; background: #f0f0f0; border-radius: 10px; font-size: 14px; font-weight: 600; color: #555; text-align: center; }
+/* 选择题 */
+.choice-options { display: flex; flex-direction: column; gap: 10px; }
+.choice-btn { display: flex; align-items: flex-start; gap: 12px; padding: 12px 16px; border: 1.5px solid #e0e0e0; border-radius: 12px; background: #fafafa; cursor: pointer; font-size: 15px; text-align: left; transition: 0.2s; width: 100%; }
+.choice-btn:hover { border-color: #0071e3; background: #f0f7ff; }
+.choice-btn.selected { border-color: #0071e3; background: #e3f2fd; }
+.choice-key { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 50%; background: #e0e0e0; color: #333; font-weight: 700; font-size: 14px; flex-shrink: 0; }
+.choice-btn.selected .choice-key { background: #0071e3; color: white; }
+.choice-text { flex: 1; line-height: 1.6; }
 
-/* ====== 全部完成 ====== */
-.all-done { text-align: center; padding: 32px; background: white; border-radius: 16px; border: 1.5px dashed #0071e3; margin-top: 20px; }
-.all-done p { font-size: 18px; font-weight: 700; color: #0071e3; margin-bottom: 16px; }
+/* 大题文本框 */
+.answer-textarea { width: 100%; padding: 12px 14px; border: 1.5px solid #d0d7e2; border-radius: 12px; font-size: 15px; line-height: 1.8; resize: vertical; outline: none; transition: 0.2s; font-family: inherit; box-sizing: border-box; }
+.answer-textarea:focus { border-color: #0071e3; box-shadow: 0 0 0 3px rgba(0,113,227,.12); }
+.act-btn.ai-grade { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; }
+.act-btn.ai-grade:hover:not(:disabled) { opacity: 0.9; }
+.act-btn.ai-grade:disabled { background: #c5b8e8; cursor: not-allowed; }
+
+/* ====== 结果区 ====== */
+.result-correct, .result-wrong { padding: 20px; border-radius: 14px; margin-top: 4px; }
+.result-correct { background: #e8f5e9; border: 1.5px solid #81c784; }
+.result-wrong { background: #fff8f8; border: 1.5px solid #ef9a9a; }
+.result-icon { font-size: 36px; text-align: center; margin-bottom: 8px; }
+.result-correct-msg { font-size: 18px; font-weight: 700; color: #2e7d32; text-align: center; margin-bottom: 12px; }
+.result-wrong-msg { font-size: 16px; font-weight: 700; color: #c62828; text-align: center; margin-bottom: 14px; }
+.result-detail { font-size: 14px; color: #444; line-height: 1.7; margin-bottom: 14px; text-align: center; }
+
+.analysis-card, .diagnosis-card { background: white; border-radius: 12px; padding: 14px 16px; margin-bottom: 12px; border: 1px solid #e0e0e0; }
+.analysis-title { font-size: 13px; font-weight: 700; color: #555; margin-bottom: 8px; }
+.analysis-body { font-size: 14px; color: #333; line-height: 1.8; }
+.diagnosis-loading { font-size: 13px; color: #888; padding: 8px 0; }
+
+.next-btn { background: #0071e3; color: white; display: block; width: 100%; text-align: center; margin-top: 14px; padding: 12px; font-size: 15px; }
+.next-btn:hover { background: #005bb5; }
+.next-btn.wrong-next { background: #555; }
+.next-btn.wrong-next:hover { background: #333; }
+
+/* ====== 总结 ====== */
+.all-done { text-align: center; padding: 40px 20px; background: white; border-radius: 18px; border: 1.5px dashed #0071e3; margin-top: 20px; }
+.done-emoji { font-size: 48px; margin-bottom: 12px; }
+.done-title { font-size: 22px; font-weight: 700; color: #1d1d1f; margin-bottom: 16px; }
+.done-stats { display: flex; justify-content: center; gap: 24px; margin-bottom: 12px; }
+.done-stat { font-size: 15px; font-weight: 600; padding: 6px 14px; border-radius: 999px; }
+.done-stat.correct { background: #e8f5e9; color: #2e7d32; }
+.done-stat.wrong { background: #fce4ec; color: #c62828; }
+.done-stat.skip { background: #f3f4f6; color: #555; }
+.done-accuracy { font-size: 28px; font-weight: 800; color: #0071e3; margin-bottom: 20px; }
+.mt-16 { margin-top: 16px; }
 
 /* ====== 响应式 ====== */
 @media (max-width: 1024px) {
@@ -492,5 +841,6 @@ onMounted(async () => {
   .act-btn { text-align: center; }
   .advisor-mode-card { flex-direction: column; align-items: flex-start; }
   .mode-stats { text-align: left; }
+  .done-stats { flex-direction: column; align-items: center; gap: 8px; }
 }
 </style>
