@@ -190,10 +190,41 @@ export const learningToolsAPI = {
   },
 }
 
+export const advisorAPI = {
+  /** 初始化/重建画像（首次使用或强制重建 Redis 缓存） */
+  initProfile: () => request('/advisor/init'),
+
+  /** 获取 Advisor 推荐题目 */
+  getRecommendations: ({ limit = 5 } = {}) =>
+    request(`/advisor/recommend${buildQuery({ limit })}`),
+
+  /** 提交答题反馈（更新画像 + Redis） */
+  submitFeedback: ({ questionId, isCorrect, hintCount = 0, timeSpent, skipReason, algorithmVersion = 'advisor-v1', recommendationSessionId } = {}) =>
+    request('/advisor/feedback', {
+      method: 'POST',
+      body: JSON.stringify({
+        question_id: questionId,
+        is_correct: isCorrect,
+        hint_count: hintCount,
+        time_spent: timeSpent ?? null,
+        skip_reason: skipReason ?? null,
+        algorithm_version: algorithmVersion,
+        recommendation_session_id: recommendationSessionId ?? null,
+      }),
+    }),
+
+  /** 获取带缓存的快速画像 */
+  getProfile: () => request('/advisor/profile'),
+
+  /** Redis 健康检查 */
+  redisHealth: () => request('/advisor/redis/health'),
+}
+
 export default {
   auth: authAPI,
   profile: profileAPI,
   exercises: exercisesAPI,
   learningTools: learningToolsAPI,
+  advisor: advisorAPI,
   ensureCurrentUserId,
 }
