@@ -28,6 +28,10 @@
             <span class="nav-icon">📝</span>
             <span class="nav-text">练习推荐</span>
           </router-link>
+          <router-link to="/mistake-book" class="nav-item" @click="closeNavOnMobile">
+            <span class="nav-icon">📕</span>
+            <span class="nav-text">错题本</span>
+          </router-link>
           <button class="logout-btn" @click="handleLogout">
             <span class="nav-icon">🚪</span>
             <span class="nav-text">退出登录</span>

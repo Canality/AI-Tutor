@@ -79,7 +79,7 @@ echo.
 echo # JWT配置
 echo SECRET_KEY=请修改为你的随机密钥
 echo ALGORITHM=HS256
-echo ACCESS_TOKEN_EXPIRE_MINUTES=30
+echo ACCESS_TOKEN_EXPIRE_MINUTES=1440
 echo.
 echo # 硅基流动 API 配置
 echo OPENAI_API_KEY=sk-请填写你的API密钥

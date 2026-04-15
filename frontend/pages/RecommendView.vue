@@ -28,6 +28,9 @@
         <router-link to="/exercises" class="nav-item">
           <span class="nav-icon">📝</span><span>练习中心</span>
         </router-link>
+        <router-link to="/mistake-book" class="nav-item">
+          <span class="nav-icon">📕</span><span>错题本</span>
+        </router-link>
         <router-link to="/profile" class="nav-item">
           <span class="nav-icon">📊</span><span>学习画像</span>
         </router-link>

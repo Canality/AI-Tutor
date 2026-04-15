@@ -1,6 +1,46 @@
 <template>
-  <div class="exercises-page">
-    <Navigation />
+  <div class="exercises-page" :class="{ 'sidebar-collapsed': isSidebarCollapsed }">
+    <!-- 侧边栏 -->
+    <aside class="sidebar">
+      <div class="user-section">
+        <div class="user-avatar-large">
+          <span>{{ userInfo.avatar }}</span>
+        </div>
+        <div class="user-info" v-show="!isSidebarCollapsed">
+          <span class="user-name">{{ userInfo.name }}</span>
+          <span class="user-level">练习中心</span>
+        </div>
+      </div>
+
+      <button class="toggle-btn" @click.stop="toggleSidebar">
+        {{ isSidebarCollapsed ? '→' : '←' }}
+      </button>
+
+      <div class="quick-nav" v-show="!isSidebarCollapsed">
+        <router-link to="/ai-tutor" class="nav-item">
+          <span class="nav-icon">💬</span><span>AI 提问</span>
+        </router-link>
+        <router-link to="/recommend" class="nav-item">
+          <span class="nav-icon">✨</span><span>智能推荐</span>
+        </router-link>
+        <router-link to="/exercises" class="nav-item active">
+          <span class="nav-icon">📝</span><span>练习中心</span>
+        </router-link>
+        <router-link to="/mistake-book" class="nav-item">
+          <span class="nav-icon">📕</span><span>错题本</span>
+        </router-link>
+        <router-link to="/profile" class="nav-item">
+          <span class="nav-icon">📊</span><span>学习画像</span>
+        </router-link>
+      </div>
+
+      <div class="sidebar-footer" v-show="!isSidebarCollapsed">
+        <button class="logout-btn" @click="logout">
+          <span>🚪</span><span>退出登录</span>
+        </button>
+      </div>
+    </aside>
+
     <div class="content main-content">
       <div class="header-row">
         <h1>📝 练习推荐 / 错题本 / 收藏夹</h1>
@@ -123,8 +163,19 @@
 
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
-import Navigation from '../components/Navigation.vue'
+import { useRouter } from 'vue-router'
 import { ensureCurrentUserId, exercisesAPI, learningToolsAPI } from '../services/apiService'
+
+const router = useRouter()
+const isSidebarCollapsed = ref(false)
+const toggleSidebar = () => { isSidebarCollapsed.value = !isSidebarCollapsed.value }
+const userInfo = ref({ name: '', avatar: '👤' })
+
+const logout = () => {
+  localStorage.removeItem('access_token')
+  localStorage.removeItem('user_info')
+  router.push('/login')
+}
 
 const userId = ref(null)
 const error = ref('')
@@ -253,6 +304,12 @@ const bootstrap = async () => {
   error.value = ''
   try {
     userId.value = await ensureCurrentUserId()
+    const stored = localStorage.getItem('user_info')
+    if (stored) {
+      const info = JSON.parse(stored)
+      userInfo.value.name = info.username || info.name || '用户'
+      userInfo.value.avatar = info.avatar || '👤'
+    }
     await Promise.all([loadRecommendations(), loadMistakes(), loadReminders(), loadFavorites()])
   } catch (e) {
     error.value = e?.message || '初始化失败，请重新登录'
@@ -263,7 +320,113 @@ onMounted(bootstrap)
 </script>
 
 <style scoped>
-.exercises-page { min-height: 100vh; background: #f6f8fc; margin-left: 250px; }
+/* ===== 布局 ===== */
+.exercises-page {
+  display: flex;
+  min-height: 100vh;
+  background: #f6f8fc;
+}
+
+.sidebar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 240px;
+  height: 100vh;
+  background: linear-gradient(160deg, #1e3a5f 0%, #2563eb 100%);
+  display: flex;
+  flex-direction: column;
+  padding: 20px 16px;
+  z-index: 100;
+  transition: width 0.3s ease;
+  overflow: hidden;
+}
+
+.exercises-page.sidebar-collapsed .sidebar { width: 64px; }
+.exercises-page.sidebar-collapsed .main-content { margin-left: 64px; }
+
+.main-content { margin-left: 240px; flex: 1; transition: margin-left 0.3s ease; }
+
+.user-section {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 16px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid rgba(255,255,255,0.15);
+}
+
+.user-avatar-large {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  flex-shrink: 0;
+}
+
+.user-info { display: flex; flex-direction: column; overflow: hidden; }
+.user-name { color: white; font-weight: 600; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.user-level { color: rgba(255,255,255,0.65); font-size: 12px; margin-top: 2px; }
+
+.toggle-btn {
+  align-self: flex-end;
+  background: rgba(255,255,255,0.15);
+  border: none;
+  color: white;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.quick-nav { display: flex; flex-direction: column; gap: 4px; flex: 1; }
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  color: rgba(255,255,255,0.8);
+  text-decoration: none;
+  font-size: 14px;
+  transition: background 0.2s;
+  white-space: nowrap;
+}
+
+.nav-item:hover { background: rgba(255,255,255,0.15); color: white; }
+.nav-item.active { background: rgba(255,255,255,0.25); color: white; font-weight: 600; }
+.nav-icon { font-size: 18px; width: 24px; text-align: center; flex-shrink: 0; }
+
+.sidebar-footer { margin-top: auto; padding-top: 12px; border-top: 1px solid rgba(255,255,255,0.15); }
+
+.logout-btn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 12px;
+  background: rgba(255,255,255,0.1);
+  border: none;
+  border-radius: 10px;
+  color: rgba(255,255,255,0.85);
+  font-size: 14px;
+  cursor: pointer;
+  transition: background 0.2s;
+  white-space: nowrap;
+}
+.logout-btn:hover { background: rgba(255,255,255,0.2); }
+
+/* ===== 内容区 ===== */
 .content { max-width: 1160px; margin: 0 auto; padding: 28px; }
 .header-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 6px; }
 .sub { color: #6b7280; margin-bottom: 12px; }
@@ -296,7 +459,9 @@ input, select { border: 1px solid #d0d7e2; border-radius: 8px; padding: 6px 8px;
 .line2, .line3 { color: #64748b; font-size: 12px; }
 
 @media (max-width: 960px) {
-  .exercises-page { margin-left: 0; }
+  .sidebar { width: 64px; }
+  .main-content { margin-left: 64px; }
+  .user-info, .quick-nav span:last-child, .logout-btn span:last-child, .user-level { display: none; }
   .grid-two { grid-template-columns: 1fr; }
 }
 </style>
