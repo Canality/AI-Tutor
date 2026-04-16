@@ -137,4 +137,23 @@ try:
 except ImportError:
     pass  # Redis可选依赖
 
+# 尝试导入Advisor Agent
+try:
+    from agents.advisor_agent import (
+        AdvisorAgent,
+        AdvisorMode,
+        UserLearningState,
+        AdvisorInstruction,
+        get_advisor_agent
+    )
+    __all__.extend([
+        'AdvisorAgent',
+        'AdvisorMode',
+        'UserLearningState',
+        'AdvisorInstruction',
+        'get_advisor_agent'
+    ])
+except ImportError:
+    pass  # Advisor可选依赖
+
 __version__ = '3.0.0'
