@@ -120,4 +120,21 @@ __all__ = [
     'get_memory_decay_cron',
 ]
 
+# 尝试导入Redis服务（如果已安装）
+try:
+    from services.redis_service import (
+        RedisService,
+        ReviewItem,
+        get_redis_service,
+        init_redis_service
+    )
+    __all__.extend([
+        'RedisService',
+        'ReviewItem',
+        'get_redis_service',
+        'init_redis_service'
+    ])
+except ImportError:
+    pass  # Redis可选依赖
+
 __version__ = '3.0.0'

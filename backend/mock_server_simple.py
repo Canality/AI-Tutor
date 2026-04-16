@@ -22,7 +22,9 @@ from algorithms import (
     AnswerRecord, HintLevel,
     StreakHandler, get_streak_handler,
     SkillTreeBuilder, get_skill_tree_builder,
-    HintButtonStateMachine, get_hint_button_sm
+    HintButtonStateMachine, get_hint_button_sm,
+    DailyTrainingPackGenerator, get_daily_pack_generator,
+    MemoryDecayCronJob, get_memory_decay_cron
 )
 
 # 初始化算法模型
@@ -35,6 +37,17 @@ actual_score_calc = ActualScoreCalculator()
 streak_handler = get_streak_handler()
 skill_tree_builder = get_skill_tree_builder()
 hint_button_sm = get_hint_button_sm()
+daily_pack_generator = get_daily_pack_generator()
+memory_decay_cron = get_memory_decay_cron()
+
+# 初始化Redis服务（如果可用）
+try:
+    from services.redis_service import RedisService
+    redis_service = RedisService()
+    print("Redis服务已连接")
+except Exception as e:
+    redis_service = None
+    print(f"Redis服务未连接: {e}")
 
 # Mock数据
 mock_users = {
@@ -502,6 +515,182 @@ class MockAPIHandler(http.server.BaseHTTPRequestHandler):
                 self._send_error(str(e))
             return
         
+        # ============ Redis核心数据结构 API ============
+        
+        # Redis: 添加已做题目
+        if path == "/api/redis/seen/add":
+            try:
+                if redis_service is None:
+                    raise Exception("Redis服务未连接")
+                user_id = data.get("user_id")
+                question_id = data.get("question_id")
+                result = redis_service.add_seen_question(user_id, question_id)
+                self._send_json({
+                    "success": True,
+                    "user_id": user_id,
+                    "question_id": question_id,
+                    "is_new": result
+                })
+            except Exception as e:
+                self._send_error(str(e))
+            return
+        
+        # Redis: 检查题目是否已做
+        if path.startswith("/api/redis/seen/check/"):
+            try:
+                if redis_service is None:
+                    raise Exception("Redis服务未连接")
+                parts = path.split("/")
+                user_id = int(parts[-2])
+                question_id = parts[-1]
+                is_seen = redis_service.is_question_seen(user_id, question_id)
+                self._send_json({
+                    "user_id": user_id,
+                    "question_id": question_id,
+                    "is_seen": is_seen
+                })
+            except Exception as e:
+                self._send_error(str(e))
+            return
+        
+        # Redis: 获取已做题目列表
+        if path.startswith("/api/redis/seen/") and len(path.split("/")) == 5:
+            try:
+                if redis_service is None:
+                    raise Exception("Redis服务未连接")
+                user_id = int(path.split("/")[-1])
+                questions = redis_service.get_seen_questions(user_id)
+                count = redis_service.get_seen_count(user_id)
+                self._send_json({
+                    "user_id": user_id,
+                    "count": count,
+                    "question_ids": list(questions)
+                })
+            except Exception as e:
+                self._send_error(str(e))
+            return
+        
+        # Redis: 添加到复习队列
+        if path == "/api/redis/review/add":
+            try:
+                if redis_service is None:
+                    raise Exception("Redis服务未连接")
+                user_id = data.get("user_id")
+                question_id = data.get("question_id")
+                error_count = data.get("error_count", 1)
+                next_review_at = redis_service.add_to_review_queue(user_id, question_id, error_count)
+                self._send_json({
+                    "success": True,
+                    "user_id": user_id,
+                    "question_id": question_id,
+                    "error_count": error_count,
+                    "next_review_at": next_review_at
+                })
+            except Exception as e:
+                self._send_error(str(e))
+            return
+        
+        # Redis: 获取到期复习题目
+        if path.startswith("/api/redis/review/due/"):
+            try:
+                if redis_service is None:
+                    raise Exception("Redis服务未连接")
+                user_id = int(path.split("/")[-1])
+                reviews = redis_service.get_due_reviews(user_id)
+                self._send_json({
+                    "user_id": user_id,
+                    "count": len(reviews),
+                    "due_reviews": [item.to_dict() for item in reviews]
+                })
+            except Exception as e:
+                self._send_error(str(e))
+            return
+        
+        # Redis: 设置掌握度
+        if path == "/api/redis/mastery/set":
+            try:
+                if redis_service is None:
+                    raise Exception("Redis服务未连接")
+                user_id = data.get("user_id")
+                knowledge_point_id = data.get("knowledge_point_id")
+                score = data.get("score")
+                redis_service.set_mastery(user_id, knowledge_point_id, score)
+                self._send_json({
+                    "success": True,
+                    "user_id": user_id,
+                    "knowledge_point_id": knowledge_point_id,
+                    "score": score
+                })
+            except Exception as e:
+                self._send_error(str(e))
+            return
+        
+        # Redis: 获取掌握度
+        if path.startswith("/api/redis/mastery/") and len(path.split("/")) == 6:
+            try:
+                if redis_service is None:
+                    raise Exception("Redis服务未连接")
+                parts = path.split("/")
+                user_id = int(parts[-2])
+                knowledge_point_id = parts[-1]
+                score = redis_service.get_mastery(user_id, knowledge_point_id)
+                self._send_json({
+                    "user_id": user_id,
+                    "knowledge_point_id": knowledge_point_id,
+                    "score": score
+                })
+            except Exception as e:
+                self._send_error(str(e))
+            return
+        
+        # Redis: 获取所有掌握度
+        if path.startswith("/api/redis/mastery/") and len(path.split("/")) == 5:
+            try:
+                if redis_service is None:
+                    raise Exception("Redis服务未连接")
+                user_id = int(path.split("/")[-1])
+                masteries = redis_service.get_all_masteries(user_id)
+                self._send_json({
+                    "user_id": user_id,
+                    "count": len(masteries),
+                    "masteries": masteries
+                })
+            except Exception as e:
+                self._send_error(str(e))
+            return
+        
+        # Redis: 获取薄弱知识点
+        if path.startswith("/api/redis/mastery/") and path.endswith("/weak"):
+            try:
+                if redis_service is None:
+                    raise Exception("Redis服务未连接")
+                parts = path.split("/")
+                user_id = int(parts[-2])
+                weak_points = redis_service.get_weak_knowledge_points(user_id)
+                self._send_json({
+                    "user_id": user_id,
+                    "count": len(weak_points),
+                    "weak_points": [
+                        {"knowledge_point_id": kp, "score": score}
+                        for kp, score in weak_points
+                    ]
+                })
+            except Exception as e:
+                self._send_error(str(e))
+            return
+        
+        # Redis: 获取用户完整学习状态
+        if path.startswith("/api/redis/state/"):
+            try:
+                if redis_service is None:
+                    raise Exception("Redis服务未连接")
+                user_id = int(path.split("/")[-1])
+                state = redis_service.get_user_learning_state(user_id)
+                self._send_json(state)
+            except Exception as e:
+                self._send_error(str(e))
+            return
+        
         # 404
         self._send_error("Not found", 404)
 
@@ -535,6 +724,17 @@ def run_server(port=8001):
         print("  POST /api/cognitive/daily-pack               - Get daily 5-question pack (需求20)")
         print("  POST /api/cognitive/cron/memory-decay        - Execute memory decay cron (需求29)")
         print("  GET  /api/cognitive/cron/memory-decay/next   - Get next cron execution time (需求29)")
+        print("\n  === Redis核心数据结构 ===")
+        print("  POST /api/redis/seen/add                     - Add seen question")
+        print("  GET  /api/redis/seen/check/{uid}/{qid}       - Check if question seen")
+        print("  GET  /api/redis/seen/{uid}                   - Get all seen questions")
+        print("  POST /api/redis/review/add                   - Add to review queue")
+        print("  GET  /api/redis/review/due/{uid}             - Get due reviews")
+        print("  POST /api/redis/mastery/set                  - Set mastery score")
+        print("  GET  /api/redis/mastery/{uid}                - Get all masteries")
+        print("  GET  /api/redis/mastery/{uid}/{kpid}         - Get single mastery")
+        print("  GET  /api/redis/mastery/{uid}/weak           - Get weak knowledge points")
+        print("  GET  /api/redis/state/{uid}                  - Get full learning state")
         print("\nPress Ctrl+C to stop")
         print("=" * 60 + "\n")
         
