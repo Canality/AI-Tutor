@@ -16,6 +16,7 @@ from algorithms import IRTModel, KIRTModel, QuestionParams
 from algorithms.adaptive_k import AdaptiveKFactor, AdaptiveKParams
 from algorithms.memory_decay import MemoryDecay, MemoryDecayParams
 from algorithms.actual_score import ActualScoreCalculator, AnswerRecord, HintLevel
+from algorithms.streak_handler import StreakHandler, StreakEffect
 
 from models.chat import UserKnowledgeMastery, KnowledgePoint
 from models.learning_analytics import UserAbilityHistory
@@ -44,6 +45,7 @@ class CognitiveDiagnosisService:
         self.adaptive_k = AdaptiveKFactor(AdaptiveKParams())
         self.memory_decay = MemoryDecay(MemoryDecayParams())
         self.actual_score_calc = ActualScoreCalculator()
+        self.streak_handler = StreakHandler()  # 需求1：连击处理器
     
     async def update_knowledge_mastery(
         self,
@@ -51,9 +53,11 @@ class CognitiveDiagnosisService:
         user_id: int,
         knowledge_point_id: int,
         is_correct: bool
-    ) -> float:
+    ) -> Dict:
         """
         更新知识点掌握度（使用BKT算法）
+        
+        需求1：同时处理连对/连错状态，触发难度自适应调整
         
         Args:
             db: 数据库会话
@@ -62,7 +66,7 @@ class CognitiveDiagnosisService:
             is_correct: 是否答对
             
         Returns:
-            更新后的掌握度 P(L)
+            包含掌握度、连击状态、UI效果的完整结果
         """
         # 查询当前的掌握度记录
         stmt = select(UserKnowledgeMastery).where(
@@ -104,8 +108,25 @@ class CognitiveDiagnosisService:
         ukm.mastery_level = int(p_known_new * 100)  # 转换为0-100
         ukm.last_practiced_at = datetime.now()
         
+        # 需求1：获取当前能力值用于难度调整计算
+        theta_info = await self.estimate_theta(db, user_id)
+        theta = theta_info['theta']
+        
+        # 需求1：处理连击状态并获取UI效果
+        streak_result = self.streak_handler.process_answer(user_id, is_correct, theta)
+        
         await db.commit()
-        return p_known_new
+        
+        return {
+            'p_known': p_known_new,
+            'p_known_change': p_known_new - p_known_old,
+            'consecutive_correct': ukm.consecutive_correct,
+            'consecutive_wrong': ukm.consecutive_wrong,
+            'streak_state': streak_result['streak_state'],
+            'difficulty_adjustment': streak_result['difficulty_adjustment'],
+            'ui_effect': streak_result['ui_effect'],
+            'should_trigger_effect': streak_result['should_trigger_effect']
+        }
     
     async def estimate_theta(
         self,

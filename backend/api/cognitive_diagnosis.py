@@ -93,6 +93,75 @@ class MemoryDecayResponse(BaseModel):
     updates: List[dict] = Field(..., description="更新详情")
 
 
+# ============ 需求1：连击状态与难度自适应调整 ============
+
+class StreakUpdateRequest(BaseModel):
+    """更新连击状态请求（需求1）"""
+    user_id: int = Field(..., description="用户ID")
+    knowledge_point_id: int = Field(..., description="知识点ID")
+    is_correct: bool = Field(..., description="是否答对")
+
+
+class StreakUpdateResponse(BaseModel):
+    """更新连击状态响应（需求1）"""
+    user_id: int
+    knowledge_point_id: int
+    p_known: float = Field(..., description="更新后的掌握度")
+    p_known_change: float = Field(..., description="掌握度变化")
+    # 连击状态
+    consecutive_correct: int = Field(..., description="连续正确次数")
+    consecutive_wrong: int = Field(..., description="连续错误次数")
+    # 难度调整
+    difficulty_adjustment: dict = Field(..., description="难度调整详情")
+    # UI效果
+    ui_effect: Optional[dict] = Field(None, description="UI效果定义")
+    should_trigger_effect: bool = Field(..., description="是否触发效果")
+
+
+class StreakStateResponse(BaseModel):
+    """获取连击状态响应（需求1）"""
+    user_id: int
+    consecutive_correct: int = Field(..., description="连续正确次数")
+    consecutive_wrong: int = Field(..., description="连续错误次数")
+    current_streak_type: str = Field(..., description="当前连击类型")
+    current_streak_count: int = Field(..., description="当前连击计数")
+
+
+# ============ 需求10：游戏技能树 ============
+
+class SkillTreeRequest(BaseModel):
+    """获取技能树请求（需求10）"""
+    user_id: int = Field(..., description="用户ID")
+    topic: str = Field(..., description="专题名称，如：等差数列")
+
+
+class SkillTreeResponse(BaseModel):
+    """技能树响应（需求10）"""
+    topic: str
+    nodes: dict = Field(..., description="节点详情")
+    edges: List[tuple] = Field(..., description="边关系")
+    total_nodes: int
+
+
+class TopicProgressResponse(BaseModel):
+    """专题进度响应（需求10）"""
+    topic: str
+    total_nodes: int
+    mastered_nodes: int
+    learning_nodes: int
+    weak_nodes: int
+    locked_nodes: int
+    progress_percentage: float
+    progress_text: str
+
+
+class TrainingRecommendationResponse(BaseModel):
+    """推荐训练响应（需求10）"""
+    topic: str
+    recommendations: List[dict] = Field(..., description="推荐节点列表")
+    count: int
+
+
 # ============ API端点 ============
 
 @router.post("/mastery/update", response_model=MasteryUpdateResponse)
@@ -276,5 +345,409 @@ async def health_check():
     return {
         "status": "ok",
         "service": "cognitive-diagnosis",
-        "algorithms": ["BKT", "IRT", "K-IRT", "Adaptive-K", "Memory-Decay", "Actual-Score"]
+        "algorithms": ["BKT", "IRT", "K-IRT", "Adaptive-K", "Memory-Decay", "Actual-Score", "Streak-Handler"]
     }
+
+
+# ============ 需求1 API端点 ============
+
+@router.post("/streak/update", response_model=StreakUpdateResponse)
+async def api_update_streak(
+    request: StreakUpdateRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    更新连击状态并触发难度自适应调整（需求1）
+    
+    核心逻辑：
+    - 高光连击：连续正确3次，难度上限+0.3，触发火焰特效
+    - 降级保护：连续错误2次，难度下限-0.3，触发保护伞/咖啡杯特效
+    """
+    try:
+        # 调用服务层更新掌握度和连击状态
+        result = await cognitive_service.update_knowledge_mastery(
+            db,
+            request.user_id,
+            request.knowledge_point_id,
+            request.is_correct
+        )
+        
+        return StreakUpdateResponse(
+            user_id=request.user_id,
+            knowledge_point_id=request.knowledge_point_id,
+            p_known=round(result['p_known'], 4),
+            p_known_change=round(result['p_known_change'], 4),
+            consecutive_correct=result['consecutive_correct'],
+            consecutive_wrong=result['consecutive_wrong'],
+            difficulty_adjustment=result['difficulty_adjustment'],
+            ui_effect=result['ui_effect'],
+            should_trigger_effect=result['should_trigger_effect']
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"更新连击状态失败: {str(e)}")
+
+
+@router.get("/streak/state/{user_id}", response_model=StreakStateResponse)
+async def api_get_streak_state(user_id: int):
+    """
+    获取用户当前连击状态（需求1）
+    
+    返回用户的连续正确/错误次数
+    """
+    try:
+        from algorithms.streak_handler import get_streak_handler
+        handler = get_streak_handler()
+        state = handler.get_user_streak_state(user_id)
+        
+        return StreakStateResponse(
+            user_id=user_id,
+            consecutive_correct=state.consecutive_correct,
+            consecutive_wrong=state.consecutive_wrong,
+            current_streak_type=state.current_streak_type.value,
+            current_streak_count=state.current_streak_count
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"获取连击状态失败: {str(e)}")
+
+
+@router.post("/streak/reset/{user_id}")
+async def api_reset_streak(user_id: int):
+    """
+    重置用户连击状态（需求1）
+    
+    用于测试或特殊场景下重置连击计数
+    """
+    try:
+        from algorithms.streak_handler import get_streak_handler
+        handler = get_streak_handler()
+        state = handler.reset_streak(user_id)
+        
+        return {
+            "user_id": user_id,
+            "message": "连击状态已重置",
+            "state": state.to_dict()
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"重置连击状态失败: {str(e)}")
+
+
+# ============ 需求10 API端点 ============
+
+@router.post("/skill-tree", response_model=SkillTreeResponse)
+async def api_get_skill_tree(request: SkillTreeRequest):
+    """
+    获取用户的技能树（需求10）
+    
+    返回带状态的知识点技能树，包含：
+    - 绿色：已掌握 (P(L) >= 0.8)
+    - 黄色：学习中 (0.5 <= P(L) < 0.8)
+    - 红色：薄弱点 (P(L) < 0.5)
+    - 灰色：锁定（前置未达标）
+    """
+    try:
+        from algorithms.skill_tree import get_skill_tree_builder
+        builder = get_skill_tree_builder()
+        
+        # TODO: 从数据库获取用户实际掌握度
+        # 这里使用Mock数据演示
+        mock_mastery = {
+            "arith_001": 0.9,
+            "arith_002": 0.85,
+            "arith_003": 0.6,
+            "arith_004": 0.3,
+            "arith_005": 0.4,
+            "arith_006": 0.0,
+        }
+        
+        user_tree = builder.build_user_skill_tree(request.topic, mock_mastery)
+        
+        return SkillTreeResponse(
+            topic=user_tree.topic,
+            nodes={k: v.to_dict() for k, v in user_tree.nodes.items()},
+            edges=user_tree.edges,
+            total_nodes=user_tree.total_nodes
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"获取技能树失败: {str(e)}")
+
+
+@router.post("/skill-tree/progress", response_model=TopicProgressResponse)
+async def api_get_topic_progress(request: SkillTreeRequest):
+    """
+    获取专题进度（需求10）
+    
+    PRD公式：进度百分比 = (P(L) >= 0.8 的知识点数量) / (该专题总知识点数量)
+    """
+    try:
+        from algorithms.skill_tree import get_skill_tree_builder
+        builder = get_skill_tree_builder()
+        
+        # TODO: 从数据库获取用户实际掌握度
+        mock_mastery = {
+            "arith_001": 0.9,
+            "arith_002": 0.85,
+            "arith_003": 0.6,
+            "arith_004": 0.3,
+            "arith_005": 0.4,
+            "arith_006": 0.0,
+        }
+        
+        progress = builder.calculate_topic_progress(request.topic, mock_mastery)
+        
+        return TopicProgressResponse(**progress.to_dict())
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"获取专题进度失败: {str(e)}")
+
+
+@router.post("/skill-tree/recommendations")
+async def api_get_training_recommendations(request: SkillTreeRequest, limit: int = 3):
+    """
+    获取推荐训练节点（一键特训）（需求10）
+    
+    推荐策略：
+    1. 优先推荐薄弱点（红色）
+    2. 其次推荐学习中（黄色）
+    3. 排除已掌握（绿色）和锁定（灰色）
+    """
+    try:
+        from algorithms.skill_tree import get_skill_tree_builder
+        builder = get_skill_tree_builder()
+        
+        # TODO: 从数据库获取用户实际掌握度
+        mock_mastery = {
+            "arith_001": 0.9,
+            "arith_002": 0.85,
+            "arith_003": 0.6,
+            "arith_004": 0.3,
+            "arith_005": 0.4,
+            "arith_006": 0.0,
+        }
+        
+        recommendations = builder.get_recommended_training(
+            request.topic, 
+            mock_mastery, 
+            limit=limit
+        )
+        
+        return TrainingRecommendationResponse(
+            topic=request.topic,
+            recommendations=recommendations,
+            count=len(recommendations)
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"获取推荐训练失败: {str(e)}")
+
+
+@router.get("/skill-tree/topics")
+async def api_get_all_topics():
+    """
+    获取所有专题列表（需求10）
+    """
+    try:
+        from algorithms.skill_tree import get_skill_tree_builder
+        builder = get_skill_tree_builder()
+        
+        topics = builder.get_all_topics()
+        
+        return {
+            "topics": topics,
+            "count": len(topics)
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"获取专题列表失败: {str(e)}")
+
+
+# ============ 需求16：渐进式提示按钮 API端点 ============
+
+class HintButtonClickRequest(BaseModel):
+    """提示按钮点击请求（需求16）"""
+    user_id: int = Field(..., description="用户ID")
+
+
+class HintButtonClickResponse(BaseModel):
+    """提示按钮点击响应（需求16）"""
+    user_id: int
+    previous_state: Optional[str] = Field(None, description="之前的状态")
+    current_state: str = Field(..., description="当前状态")
+    button_config: dict = Field(..., description="按钮配置")
+    click_count: int = Field(..., description="点击次数")
+    hint_level: Optional[int] = Field(None, description="提示等级")
+    actual_weight: float = Field(..., description="Actual权重")
+
+
+class HintButtonStateResponse(BaseModel):
+    """获取提示按钮状态响应（需求16）"""
+    user_id: int
+    current_state: str = Field(..., description="当前状态")
+    click_count: int = Field(..., description="点击次数")
+    button_config: dict = Field(..., description="按钮配置")
+    hint_level: Optional[int] = Field(None, description="提示等级")
+    actual_weight: float = Field(..., description="Actual权重")
+    is_visible: bool = Field(..., description="按钮是否可见")
+    is_highlighted: bool = Field(..., description="按钮是否标红")
+
+
+@router.post("/hint-button/click", response_model=HintButtonClickResponse)
+async def api_hint_button_click(request: HintButtonClickRequest):
+    """
+    点击渐进式提示按钮（需求16）
+    
+    状态机流转：
+    - 初始状态 -> L1 -> L2 -> L3 -> L4(隐藏)
+    - 每次点击返回对应的hint_level和Actual权重
+    """
+    try:
+        from algorithms.hint_button_state_machine import get_hint_button_sm
+        sm = get_hint_button_sm()
+        
+        result = sm.click(request.user_id)
+        
+        return HintButtonClickResponse(**result)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"点击提示按钮失败: {str(e)}")
+
+
+@router.post("/hint-button/reset")
+async def api_hint_button_reset(request: HintButtonClickRequest):
+    """
+    重置提示按钮状态机（需求16）
+    
+    触发条件：学生提交正确答案时调用
+    """
+    try:
+        from algorithms.hint_button_state_machine import get_hint_button_sm
+        sm = get_hint_button_sm()
+        
+        result = sm.reset(request.user_id)
+        
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"重置提示按钮失败: {str(e)}")
+
+
+@router.get("/hint-button/state/{user_id}", response_model=HintButtonStateResponse)
+async def api_get_hint_button_state(user_id: int):
+    """
+    获取提示按钮当前状态（需求16）
+    
+    用于前端初始化按钮显示
+    """
+    try:
+        from algorithms.hint_button_state_machine import get_hint_button_sm
+        sm = get_hint_button_sm()
+        
+        result = sm.get_full_state(user_id)
+        
+        return HintButtonStateResponse(**result)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"获取提示按钮状态失败: {str(e)}")
+
+
+# ============ 需求20：每日5题特训包 API端点 ============
+
+class DailyPackRequest(BaseModel):
+    """获取每日特训包请求（需求20）"""
+    user_id: int = Field(..., description="用户ID")
+    date: Optional[str] = Field(None, description="日期，默认今天")
+
+
+class DailyPackResponse(BaseModel):
+    """每日特训包响应（需求20）"""
+    user_id: int
+    date: str
+    total_questions: int
+    questions: List[dict] = Field(..., description="题目列表")
+    type_distribution: dict = Field(..., description="题型分布")
+
+
+@router.post("/daily-pack", response_model=DailyPackResponse)
+async def api_get_daily_pack(request: DailyPackRequest):
+    """
+    获取每日5题特训包（需求20）
+    
+    动态混排配比：
+    - 温故题 (复习)：1-2题，从Redis Review Queue获取
+    - 攻坚题 (薄弱)：2-3题，P(L)<0.5的知识点变式题
+    - 探索题 (拓展)：1题，符合θ难度区间的全新题目
+    
+    UI标签：[温故]、[攻坚]、[探索]
+    """
+    try:
+        from algorithms.daily_training_pack import get_daily_pack_generator
+        generator = get_daily_pack_generator()
+        
+        # TODO: 从数据库获取用户实际数据
+        # Mock数据
+        user_theta = 0.5
+        user_mastery = {
+            "等差数列定义": 0.9,
+            "等差数列通项": 0.85,
+            "等差数列求和": 0.3,  # 薄弱
+            "等比数列定义": 0.4,  # 薄弱
+            "递推数列": 0.6,
+        }
+        review_queue = ["q001"]  # Mock复习队列
+        
+        pack = generator.generate_pack(
+            user_id=request.user_id,
+            user_theta=user_theta,
+            user_mastery=user_mastery,
+            review_queue=review_queue,
+            date=request.date
+        )
+        
+        return DailyPackResponse(**pack.to_dict())
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"获取每日特训包失败: {str(e)}")
+
+
+# ============ 需求29：记忆衰减Cron任务 API端点 ============
+
+class CronJobResponse(BaseModel):
+    """Cron任务执行响应（需求29）"""
+    execution_time: str
+    total_processed: int
+    total_decayed: int
+    results: List[dict]
+
+
+@router.post("/cron/memory-decay", response_model=CronJobResponse)
+async def api_execute_memory_decay_cron():
+    """
+    执行记忆衰减定时任务（需求29）
+    
+    执行频率：每日凌晨 02:00
+    衰减公式：P(L_t) = P(L_{t-1}) × e^(-λΔt)
+    缓存同步：更新MySQL后同步Redis
+    
+    注意：实际生产环境应由Cron调度器调用，此API用于手动触发测试
+    """
+    try:
+        from algorithms.memory_decay_cron import get_memory_decay_cron
+        cron = get_memory_decay_cron()
+        
+        result = cron.execute_cron_job()
+        
+        return CronJobResponse(**result)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"执行记忆衰减任务失败: {str(e)}")
+
+
+@router.get("/cron/memory-decay/next-execution")
+async def api_get_next_cron_execution():
+    """
+    获取下次Cron执行时间（需求29）
+    """
+    try:
+        from algorithms.memory_decay_cron import get_memory_decay_cron
+        cron = get_memory_decay_cron()
+        
+        next_time = cron.get_next_execution_time()
+        
+        return {
+            "next_execution": next_time.isoformat(),
+            "hour": cron.EXECUTION_HOUR,
+            "minute": cron.EXECUTION_MINUTE
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"获取下次执行时间失败: {str(e)}")
